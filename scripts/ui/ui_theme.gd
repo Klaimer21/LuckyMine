@@ -22,6 +22,9 @@ const DARK_ON_BRASS := Color(0.10, 0.08, 0.03)
 
 const DISPLAY_FONT := "AlfaSlabOne-Regular.ttf"
 const BODY_FONT := "BarlowSemiCondensed-SemiBold.ttf"
+## Для русского: те же роли, но шрифты с кириллицей (Alfa Slab One и Barlow её не содержат).
+const RU_DISPLAY_FONT := "RussoOne-Regular.ttf"
+const RU_BODY_FONT := "FiraSansCondensed-SemiBold.ttf"
 
 
 static var _system_font: SystemFont
@@ -42,6 +45,14 @@ static func install_system_font() -> void:
 	ThemeDB.get_default_theme().default_font = system_font()
 
 
+static func display_file() -> String:
+	return RU_DISPLAY_FONT if Tr.language == "ru" else DISPLAY_FONT
+
+
+static func body_file() -> String:
+	return RU_BODY_FONT if Tr.language == "ru" else BODY_FONT
+
+
 ## Файл шрифта из assets/fonts. Для китайского свои файлы не используются (в них нет иероглифов).
 ## В Alfa Slab One и Barlow нет кириллицы: русские буквы и стрелки берутся из системного шрифта (запасной).
 static func font(file_name: String) -> Font:
@@ -58,7 +69,7 @@ static func font(file_name: String) -> Font:
 
 ## Шрифт для 3D-текста: фирменный, если есть, иначе системный.
 static func text_font(display := false) -> Font:
-	var f := font(DISPLAY_FONT if display else BODY_FONT)
+	var f := font(display_file() if display else body_file())
 	return f if f != null else system_font()
 
 
@@ -78,7 +89,7 @@ static func make_label(text: String, size: int, color := TEXT, display := false)
 	label.text = Tr.t(text)
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", color)
-	var f := font(DISPLAY_FONT if display else BODY_FONT)
+	var f := font(display_file() if display else body_file())
 	if f != null:
 		label.add_theme_font_override("font", f)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -136,7 +147,7 @@ static func make_button(text: String, brass: bool, size := 32) -> Button:
 	button.add_theme_color_override("font_hover_color", DARK_ON_BRASS if brass else TEXT)
 	button.add_theme_color_override("font_pressed_color", DARK_ON_BRASS if brass else TEXT)
 	button.add_theme_color_override("font_disabled_color", MUTE)
-	var f := font(BODY_FONT)
+	var f := font(body_file())
 	if f != null:
 		button.add_theme_font_override("font", f)
 	button.add_theme_stylebox_override("normal", _box(BRASS if brass else Color(0, 0, 0, 0), brass))
@@ -165,7 +176,7 @@ static func make_key(text: String, size := 32, kind := "brass") -> Button:
 	var button := Button.new()
 	button.text = Tr.t(text)
 	button.add_theme_font_size_override("font_size", size)
-	var f := font(DISPLAY_FONT)
+	var f := font(display_file())
 	if f != null:
 		button.add_theme_font_override("font", f)
 	style_key(button, kind)
