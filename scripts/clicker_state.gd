@@ -898,8 +898,7 @@ func export_code() -> String:
 ## Проверяет код и кладёт его на место сохранения (текущее уходит в запасную копию). true — код принят.
 ## Код с неверной подписью (правленный) не принимается. После успеха сцену нужно перезагрузить.
 static func import_code(code: String) -> bool:
-	code = code.strip_edges().replace("
-", "").replace(" ", "")
+	code = code.strip_edges().replace("\n", "").replace("\r", "").replace(" ", "")
 	if not code.begins_with(CODE_PREFIX):
 		return false
 	var text := Marshalls.base64_to_utf8(code.substr(CODE_PREFIX.length()))
