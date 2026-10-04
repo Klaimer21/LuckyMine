@@ -20,6 +20,7 @@ func _initialize() -> void:
 	root.add_child(_main)
 	_main.state.tutorial_done = _rng.randf() < 0.5
 	Engine.time_scale = 3.0
+	Engine.max_fps = 0                       # без ограничения кадров: прогон идёт быстрее
 
 
 func _buttons(node: Node, out: Array) -> void:
