@@ -22,6 +22,7 @@ func _init() -> void:
 	_test_collection()
 	_test_achievements()
 	_test_biomes()
+	_test_plurals()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -222,6 +223,19 @@ func _test_biomes() -> void:
 	for planet in 8:
 		_check(Biomes.planet_name(planet) != "", "planet name %d" % planet)
 		_check(Biomes.planet_mod_text(planet) != "", "planet text %d" % planet)
+
+
+func _test_plurals() -> void:
+	var saved := Tr.language
+	Tr.set_language("ru")
+	var cases := {1: "алмаз", 2: "алмаза", 5: "алмазов", 11: "алмазов", 12: "алмазов", 21: "алмаз", 22: "алмаза", 25: "алмазов", 101: "алмаз", 0: "алмазов"}
+	for n in cases:
+		_check(Tr.fmt("+%d алмазов", [n]) == "+%d %s" % [n, cases[n]], "ru plural %d" % n)
+	_check(Tr.fmt("%d → %d глыб за обвал", [1, 3]) == "1 → 3 глыбы за обвал", "ru plural second arg")
+	_check(Tr.fmt("≈%s монет · %d алмазов · %d находок", ["5K", 1, 14]) == "≈5K монет · 1 алмаз · 14 находок", "ru plural mixed args")
+	Tr.set_language("en")
+	_check(Tr.fmt("+%d алмазов", [3]) == "+3 diamonds", "en keeps template")
+	Tr.set_language(saved)
 
 
 func _test_save_load() -> void:

@@ -51,7 +51,15 @@ func _process(delta: float) -> bool:
 			_main._settings_screen.visible = false
 			_main._save_dialogs.reset_progress()],
 		[8.4, func() -> void: _shot("8_modal")],
-		[8.5, func() -> void: quit()],
+		[8.5, func() -> void: _main._info.show_daily()],
+		[9.3, func() -> void: _shot("9_daily")],
+		[9.4, func() -> void: _main._info.show_stats()],
+		[10.2, func() -> void: _shot("10_stats")],
+		[10.3, func() -> void: _main._info.show_offline(123456.0)],
+		[11.1, func() -> void: _shot("11_offline")],
+		[11.2, func() -> void: _main._info.show_intro()],
+		[12.0, func() -> void: _shot("12_intro")],
+		[12.1, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()

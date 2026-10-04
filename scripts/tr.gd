@@ -36,6 +36,62 @@ static func t(text: String) -> String:
 	return result
 
 
+## Слова, которые в русском тексте стоят после числа и склоняются: ключ — форма «5 …» из исходной строки,
+## значение — формы для 1, 2–4 и 5+ (21 — как 1, 12–14 — как 5).
+const RU_PLURALS := {
+	"алмазов": ["алмаз", "алмаза", "алмазов"],
+	"жил": ["жила", "жилы", "жил"],
+	"очков": ["очко", "очка", "очков"],
+	"находок": ["находка", "находки", "находок"],
+	"глыб": ["глыба", "глыбы", "глыб"],
+	"динамита": ["динамит", "динамита", "динамита"],
+	"монет": ["монета", "монеты", "монет"],
+}
+static var _placeholder: RegEx
+
+
+## Перевод строки с числами сразу с подстановкой: Tr.fmt("+%d алмазов", [3]) -> "+3 алмаза" (ru), "+3 diamonds" (en).
+## Исходные строки остаются ключами перевода, русские существительные склоняются по числу.
+static func fmt(key: String, args: Array) -> String:
+	var template := t(key)
+	if language == "ru":
+		template = _pluralize_ru(template, args)
+	return template % args
+
+
+static func ru_form(n: int, forms: Array) -> String:
+	var tail := absi(n) % 100
+	if tail >= 11 and tail <= 14:
+		return forms[2]
+	match tail % 10:
+		1:
+			return forms[0]
+		2, 3, 4:
+			return forms[1]
+	return forms[2]
+
+
+## Заменяет слово после %d на форму для соответствующего аргумента (аргументы идут по порядку всех %d, %s, %.Nf).
+static func _pluralize_ru(template: String, args: Array) -> String:
+	if _placeholder == null:
+		_placeholder = RegEx.new()
+		_placeholder.compile("%(?:%|\\.\\d+f|[ds])(?:\\s+([А-Яа-яЁё]+))?")
+	var out := ""
+	var last := 0
+	var index := 0
+	for found in _placeholder.search_all(template):
+		var token := found.get_string()
+		if token.begins_with("%%"):
+			continue
+		var word := found.get_string(1)
+		if token.contains("d") and RU_PLURALS.has(word) and index < args.size():
+			var space_end := found.get_start(1)
+			out += template.substr(last, space_end - last) + ru_form(int(args[index]), RU_PLURALS[word])
+			last = found.get_end(1)
+		index += 1
+	return out + template.substr(last)
+
+
 static func _translate(text: String) -> String:
 	var table: Dictionary = Translations.table(language)
 	if table.has(text):

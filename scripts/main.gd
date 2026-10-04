@@ -72,6 +72,7 @@ var _afford_mask := -1
 var _offline_earned := 0.0
 var _ads := Ads.new()
 var _save_dialogs := SaveDialogs.new()
+var _info := InfoDialogs.new()
 var _offline_doubled := false
 var _autobuy_time := 0.0
 var _autobuy_button: Button
@@ -142,20 +143,23 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_ads.setup(_ui, state)
 	_save_dialogs.setup(_ui, state, _show_toast)
+	_info.setup(_ui, state, settings, sfx, _show_toast, func() -> void: _tutorial.start(), func() -> void:
+			if not _offline_doubled:
+				_on_ad_requested("offline"))
 	_build_ui()
 	settings.apply(get_viewport(), _table)
 	get_tree().create_timer(1.0).timeout.connect(func() -> void:
 			if not state.tutorial_done:
-				_show_intro())
+				_info.show_intro())
 	get_tree().create_timer(1.5).timeout.connect(func() -> void:
 			if not state.tutorial_done:
 				return
 			if state.offline_away >= 60.0 and _offline_earned >= 1.0:
-				_show_offline().closed.connect(func() -> void:
+				_info.show_offline(_offline_earned).closed.connect(func() -> void:
 						if state.daily_available():
-							_show_daily())
+							_info.show_daily())
 			elif state.daily_available():
-				_show_daily())
+				_info.show_daily())
 	# подсказка про навыки: очки есть, а ни один не куплен
 	get_tree().create_timer(6.0).timeout.connect(func() -> void:
 			if state.tutorial_done and state.skill_points > 0 and state.skill_level("drill") + state.skill_level("dynamite") + state.skill_level("luck") == 0:
@@ -328,14 +332,14 @@ func _on_prestige_pressed() -> void:
 	var modal := Modal.new()
 	modal.body.add_child(UiTheme.make_label("Новая шахта", 54, UiTheme.TEXT, true))
 	var after := 1.0 + state.vein_step() * (state.veins + pending)
-	var gain_text := UiTheme.make_label(Tr.t("Вы получите %d жил: доход ×%.1f → ×%.1f") % [pending, state.vein_multiplier(), after], 32, UiTheme.BRASS)
+	var gain_text := UiTheme.make_label(Tr.fmt("Вы получите %d жил: доход ×%.1f → ×%.1f", [pending, state.vein_multiplier(), after]), 32, UiTheme.BRASS)
 	gain_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	modal.body.add_child(gain_text)
 	var reset_text := UiTheme.make_label("Сбросятся монеты и улучшения. Останутся глубина, зона и жилы.", 28, UiTheme.MUTE)
 	reset_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	modal.body.add_child(reset_text)
 	if not state.prestige_recommended():
-		var wait_text := UiTheme.make_label(Tr.t("Лучше подождать: стоит от +%d жил.") % maxi(ClickerState.PRESTIGE_GOOD_MIN, int(0.7 * state.veins)), 26, UiTheme.MUTE)
+		var wait_text := UiTheme.make_label(Tr.fmt("Лучше подождать: стоит от +%d жил.", [maxi(ClickerState.PRESTIGE_GOOD_MIN, int(0.7 * state.veins))]), 26, UiTheme.MUTE)
 		wait_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		modal.body.add_child(wait_text)
 	var row := HBoxContainer.new()
@@ -353,7 +357,7 @@ func _on_prestige_pressed() -> void:
 			_earned_batch = 0.0
 			_shown_coins = state.coins
 			state.save()
-			_show_toast(Tr.t("Новая шахта! +%d жил") % gained + "  ·  " + Tr.t("очков навыков: %d") % state.skill_points)
+			_show_toast(Tr.fmt("Новая шахта! +%d жил", [gained]) + "  ·  " + Tr.t("очков навыков: %d") % state.skill_points)
 			sfx.play("gong", -3.0)
 			settings.vibrate(60)
 			_table.celebrate()
@@ -427,7 +431,7 @@ func _on_tutorial_done() -> void:
 	state.tutorial_done = true
 	state.save()
 	if state.daily_available():
-		_show_daily()
+		_info.show_daily()
 
 
 ## Подсказка по требованию: один раз за всю игру (и не во время обучения).
@@ -555,7 +559,7 @@ func _on_boss_defeated(zone: int) -> void:
 	state.bosses_defeated += 1
 	_award_dynamite(2)
 	state.save()
-	_show_toast(Tr.t("Хранитель побеждён! +%d алмазов") % gems)
+	_show_toast(Tr.fmt("Хранитель побеждён! +%d алмазов", [gems]))
 	sfx.play("boss_break", -3.0)
 	sfx.play("claim", -8.0)
 	settings.vibrate(80)
@@ -650,65 +654,6 @@ func _on_achievement_claim(id: String) -> void:
 			return
 
 
-## Ежедневная награда: семь дней по кругу, серия обрывается, если пропустить сутки.
-func _show_daily() -> void:
-	var slot := state.daily_next_slot()
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("Ежедневная награда", 50, UiTheme.TEXT, true))
-	var days := HBoxContainer.new()
-	days.add_theme_constant_override("separation", 8)
-	modal.body.add_child(days)
-	for i in Retention.DAILY.size():
-		var reward: Dictionary = Retention.DAILY[i]
-		var cell := PanelContainer.new()
-		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var border := UiTheme.BRASS if i == slot else UiTheme.LINE
-		cell.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.SURFACE if i != slot else UiTheme.FELT, border, 2 if i == slot else 1, 12, 8))
-		var box := VBoxContainer.new()
-		box.add_theme_constant_override("separation", 4)
-		cell.add_child(box)
-		var day_label := UiTheme.make_label(str(i + 1), 24, UiTheme.MUTE)
-		day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(day_label)
-		var icon_row := CenterContainer.new()
-		icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var kind := "coin" if reward.has("coins") else "gem"
-		icon_row.add_child(Icon.new().setup(kind, UiTheme.BRASS if kind == "coin" else Color(0.55, 0.86, 0.90), 36))
-		box.add_child(icon_row)
-		var text := ""
-		if reward.has("diamonds"):
-			text = "+%d" % int(reward["diamonds"])
-		if reward.has("points"):
-			text += " +" + Tr.t("очко")
-		if reward.has("dynamite"):
-			text += " +%d " % int(reward["dynamite"]) + Tr.t("дин.")
-		var amount := UiTheme.make_label(text, 22, UiTheme.TEXT)
-		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(amount)
-		days.add_child(cell)
-	var claim := UiTheme.make_button("Забрать", true, 36)
-	claim.custom_minimum_size.y = 90
-	claim.pressed.connect(func() -> void:
-			var result := state.claim_daily()
-			if not result.is_empty():
-				state.save()
-				sfx.play("claim", -4.0)
-				settings.vibrate(30)
-				var parts: Array[String] = []
-				if result.has("coins"):
-					parts.append("+" + NumberFormat.short(float(result["coins"])))
-				if result.has("diamonds"):
-					parts.append("+%d" % int(result["diamonds"]))
-				if result.has("points"):
-					parts.append("+%d " % int(result["points"]) + Tr.t("очко"))
-				if int(result.get("dynamite", 0)) > 0:
-					parts.append(Tr.t("Динамит +%d") % int(result["dynamite"]))
-				_show_toast(Tr.t("Ежедневная награда") + ": " + ", ".join(parts))
-			modal.close())
-	modal.body.add_child(claim)
-	_ui.add_child(modal)
-
-
 func _on_meta_purchase(id: String) -> void:
 	if state.buy_meta(id):
 		sfx.play("coin", -5.0)
@@ -730,101 +675,6 @@ func _apply_safe_area() -> void:
 	var k := view.y / window.y
 	_ui.offset_top = maxf(0.0, safe.position.y * k)
 	_ui.offset_bottom = -maxf(0.0, (window.y - safe.end.y) * k)
-
-
-## Знакомство: Борк рассказывает, что к чему, и предлагает обучение.
-func _show_intro() -> void:
-	var modal := Modal.new()
-	var face := Companion.portrait(400.0)
-	if face != null:
-		face.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		modal.body.add_child(face)
-	modal.body.add_child(UiTheme.make_label("Борк, бригадир", 46, UiTheme.BRASS, true))
-	var talk := UiTheme.make_label("Здорово, новичок! Я Борк, бригадир этой шахты. Камни сами себя не расколют: роняй обвалы, копи монеты и копай всё глубже: чем ниже, тем богаче порода. Давай покажу, что к чему.", 30, UiTheme.TEXT)
-	talk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(talk)
-	var start_button := UiTheme.make_key("Показать", 34, "brass")
-	start_button.custom_minimum_size.y = 88
-	start_button.pressed.connect(func() -> void:
-			modal.close()
-			_tutorial.start())
-	modal.body.add_child(start_button)
-	var skip := UiTheme.make_button("Я разберусь сам", false, 28)
-	skip.pressed.connect(func() -> void:
-			state.tutorial_done = true
-			state.save()
-			modal.close())
-	modal.body.add_child(skip)
-	_ui.add_child(modal)
-
-
-func _format_duration(seconds: float) -> String:
-	var total := int(seconds)
-	var hours := floori(total / 3600.0)
-	var minutes := floori(total / 60.0) % 60
-	return (Tr.t("%d ч %d мин") % [hours, minutes]) if hours > 0 else (Tr.t("%d мин") % maxi(1, minutes))
-
-
-## Окно «пока вас не было»: время, монеты, лимит офлайна и что ждёт в журнале.
-func _show_offline() -> Modal:
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("С возвращением!", 54, UiTheme.TEXT, true))
-	modal.body.add_child(UiTheme.make_label(Tr.t("Вас не было: %s") % _format_duration(state.offline_away), 30, UiTheme.MUTE))
-	var income := UiTheme.make_label("+" + NumberFormat.short(_offline_earned), 72, UiTheme.BRASS, true)
-	modal.body.add_child(income)
-	if state.offline_capped:
-		var cap := UiTheme.make_label(Tr.t("Офлайн-доход копится не дольше %s. «Долгая смена» на вкладке «Планета» увеличивает лимит.") % _format_duration(state.offline_cap_seconds()), 24, UiTheme.MUTE)
-		cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		modal.body.add_child(cap)
-	if state.expedition_ready():
-		modal.body.add_child(UiTheme.make_label(Tr.t("Поход завершён: заберите добычу в журнале."), 26, UiTheme.TEXT))
-	if state.claimable_achievements() > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Есть награды за достижения."), 26, UiTheme.TEXT))
-	var ok := UiTheme.make_key("Продолжить", 34, "brass")
-	ok.custom_minimum_size.y = 88
-	ok.pressed.connect(modal.close)
-	var double := UiTheme.make_key(Tr.t("×2 за рекламу"), 32, "felt")
-	double.custom_minimum_size.y = 88
-	double.pressed.connect(func() -> void:
-			if not _offline_doubled:
-				_on_ad_requested("offline"))
-	modal.body.add_child(double)
-	modal.body.add_child(ok)
-	_ui.add_child(modal)
-	return modal
-
-
-func _show_stats() -> void:
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("Статистика", 54, UiTheme.TEXT, true))
-	var seconds := int(state.play_seconds)
-	var rows: Array = [
-		["Время в игре", "%d:%02d:%02d" % [floori(seconds / 3600.0), floori(seconds / 60.0) % 60, seconds % 60]],
-		["Заработано за всё время", NumberFormat.short(state.lifetime_earned)],
-		["Разбито камней", NumberFormat.short(float(state.rocks_broken))],
-		["Находок руды", str(int(state.finds[1]) + int(state.finds[2]) + int(state.finds[3]) + int(state.finds[4]))],
-		["Алмазов", str(state.diamonds)],
-		["Золотых глыб поймано", str(state.golden_caught)],
-		["Динамита взорвано", str(state.dynamite_used)],
-		["Хранителей побеждено", str(state.bosses_defeated)],
-		["Новых шахт", str(state.prestiges)],
-		["Планета", Tr.t(Biomes.planet_name(state.planet))],
-		["Жил", str(state.veins)],
-		["Звёздной пыли", str(state.stardust)],
-		["Наград получено", str(state.achievements_claimed.size())],
-		["Просмотрено реклам", str(state.ads_watched)],
-	]
-	for entry in rows:
-		var line := HBoxContainer.new()
-		var name_label := UiTheme.make_label(Tr.t(str(entry[0])), 28, UiTheme.MUTE)
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.add_child(name_label)
-		line.add_child(UiTheme.make_label(str(entry[1]), 30, UiTheme.TEXT, true))
-		modal.body.add_child(line)
-	var close_button := UiTheme.make_button("Закрыть", false, 32)
-	close_button.pressed.connect(modal.close)
-	modal.body.add_child(close_button)
-	_ui.add_child(modal)
 
 
 func _on_planet_requested() -> void:
@@ -1067,7 +917,7 @@ func _build_ui() -> void:
 	_settings_screen.hints_reset_requested.connect(func() -> void:
 			state.hints_seen.clear()
 			_show_toast(Tr.t("Подсказки включены снова")))
-	_settings_screen.stats_requested.connect(_show_stats)
+	_settings_screen.stats_requested.connect(_info.show_stats)
 	_settings_screen.tutorial_requested.connect(func() -> void:
 			state.tutorial_done = false
 			_tutorial.start())
@@ -1490,7 +1340,7 @@ func _effect_text(key: String, count: int = 1) -> String:
 		"rain":
 			return Tr.t("%.1f → %.1f глыб в секунду") % [1.0 + 0.8 * level, 1.0 + 0.8 * next]
 		"tap":
-			return Tr.t("%d → %d глыб за обвал") % [1 + level, 1 + next]
+			return Tr.fmt("%d → %d глыб за обвал", [1 + level, 1 + next])
 		"faces":
 			return Tr.t("ценность руды 1–%d → 1–%d") % [6 + 2 * level, 6 + 2 * next]
 	return Tr.t("×%.2f → ×%.2f ко всему") % [pow(1.5, level), pow(1.5, next)]

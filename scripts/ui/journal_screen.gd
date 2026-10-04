@@ -170,8 +170,8 @@ static func _format_time(seconds: float) -> String:
 func _expedition_loot(data: Dictionary) -> String:
 	var bonus := 1.0 + 0.5 * int(state.meta["expedition"])
 	var coins := maxf(100.0, state.income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
-	return Tr.t("≈%s монет · %d алмазов · %d находок") % [NumberFormat.short(coins),
-			int(round(float(data["diamonds"]) * bonus)), int(round(float(data["finds"]) * bonus))]
+	return Tr.fmt("≈%s монет · %d алмазов · %d находок", [NumberFormat.short(coins),
+			int(round(float(data["diamonds"]) * bonus)), int(round(float(data["finds"]) * bonus))])
 
 
 ## Вкладка «Походы»: один поход за раз; идёт и по реальному времени (в том числе когда игра закрыта).
@@ -378,11 +378,11 @@ func _meta_card(entry: Dictionary) -> void:
 func _reward_text(reward: Dictionary) -> String:
 	var parts: Array[String] = []
 	if reward.has("diamonds"):
-		parts.append(Tr.t("+%d алмазов") % int(reward["diamonds"]))
+		parts.append(Tr.fmt("+%d алмазов", [int(reward["diamonds"])]))
 	if reward.has("points"):
-		parts.append(Tr.t("+%d очков навыков") % int(reward["points"]))
+		parts.append(Tr.fmt("+%d очков навыков", [int(reward["points"])]))
 	if reward.has("dynamite"):
-		parts.append(Tr.t("+%d динамита") % int(reward["dynamite"]))
+		parts.append(Tr.fmt("+%d динамита", [int(reward["dynamite"])]))
 	if reward.has("style"):
 		parts.append(Tr.t("порода: %s") % Tr.t(str(Settings.STYLE_NAMES[int(reward["style"])])))
 	return ", ".join(parts)
