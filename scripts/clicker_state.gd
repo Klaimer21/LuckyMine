@@ -363,12 +363,21 @@ func style_unlocked(index: int) -> bool:
 
 # ---------- Ежедневная награда ----------
 
+## Текущее время (unix, секунды). Всё, что зависит от часов (офлайн, походы, награды, реклама), берёт его отсюда;
+## clock_offset нужен тестам: сдвигает «часы» вперёд и назад.
+static var clock_offset := 0.0
+
+
+static func now() -> float:
+	return Time.get_unix_time_from_system() + clock_offset
+
+
 static func today() -> int:
-	return int(Time.get_unix_time_from_system() / 86400.0)
+	return int(now() / 86400.0)
 
 
 func daily_available() -> bool:
-	return daily_day != today()
+	return today() > daily_day          # откат часов назад не даёт забрать награду второй раз
 
 
 ## День серии (0…6), который будет выдан при получении.
@@ -408,7 +417,10 @@ func expedition_active() -> bool:
 
 
 func expedition_remaining() -> float:
-	return maxf(0.0, expedition_end - Time.get_unix_time_from_system()) if expedition_active() else 0.0
+	if not expedition_active():
+		return 0.0
+	var total := float(Retention.EXPEDITIONS[expedition_type]["hours"]) * 3600.0
+	return clampf(expedition_end - now(), 0.0, total)       # откат часов не растягивает поход дольше его длительности
 
 
 func expedition_ready() -> bool:
@@ -419,7 +431,7 @@ func start_expedition(index: int) -> bool:
 	if expedition_active() or index < 0 or index >= Retention.EXPEDITIONS.size():
 		return false
 	expedition_type = index
-	expedition_end = Time.get_unix_time_from_system() + float(Retention.EXPEDITIONS[index]["hours"]) * 3600.0
+	expedition_end = now() + float(Retention.EXPEDITIONS[index]["hours"]) * 3600.0
 	return true
 
 
@@ -481,11 +493,11 @@ func start_bonus_levels() -> int:
 
 ## Сколько секунд до следующего показа рекламы в этом месте (0 — можно).
 func ad_remaining(placement: String) -> float:
-	return maxf(0.0, float(ad_ready_at.get(placement, 0.0)) - Time.get_unix_time_from_system())
+	return maxf(0.0, float(ad_ready_at.get(placement, 0.0)) - now())
 
 
 func ad_mark(placement: String) -> void:
-	ad_ready_at[placement] = Time.get_unix_time_from_system() + float(Ads.PLACEMENTS[placement]["cooldown"])
+	ad_ready_at[placement] = now() + float(Ads.PLACEMENTS[placement]["cooldown"])
 
 
 ## Алмазы за рекламу: растут с зоной.
@@ -639,7 +651,7 @@ func start_rush(seconds: float = BOOST_SECONDS, stack := true) -> void:
 
 ## Секунд до следующей покупки лихорадки за алмазы (0 — можно).
 func rush_remaining() -> float:
-	return maxf(0.0, rush_ready_at - Time.get_unix_time_from_system())
+	return maxf(0.0, rush_ready_at - now())
 
 
 ## Цены лавки растут с зоной: за лихорадку и за мгновенную перезарядку динамита.
@@ -731,7 +743,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "last_seen": Time.get_unix_time_from_system()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -769,7 +781,11 @@ static func _read_save_file(path: String) -> Dictionary:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null or file.get_length() > MAX_SAVE_BYTES:
 		return {}
-	var parsed = JSON.parse_string(file.get_as_text())
+	return _parse_save_text(file.get_as_text())
+
+
+static func _parse_save_text(text: String) -> Dictionary:
+	var parsed = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return {}
 	if not parsed.has("payload"):
@@ -810,6 +826,15 @@ func load_save() -> float:
 	var data := _read_save_file(SAVE_PATH)
 	if data.is_empty():
 		data = _read_save_file(BACKUP_PATH)
+	return _apply_save(data)
+
+
+## То же из текста (serialize()): без диска, для тестов.
+func load_from_text(text: String) -> float:
+	return _apply_save(_parse_save_text(text))
+
+
+func _apply_save(data: Dictionary) -> float:
 	if data.is_empty():
 		return 0.0
 	tampered = bool(data.get("_tampered", false))
@@ -873,7 +898,7 @@ func load_save() -> float:
 	for key in ORDER:
 		levels[key] = _count(saved_levels.get(key), 0, 100000)
 	dynamite_zone_best = _count(data.get("dynamite_zone_best"), Biomes.index_for(total_earned, planet_scale()), 1000)
-	var gone := maxf(0.0, Time.get_unix_time_from_system() - _num(data.get("last_seen"), 0.0))
+	var gone := maxf(0.0, now() - _num(data.get("last_seen"), 0.0))
 	var away := minf(gone, offline_cap_seconds())
 	offline_away = away
 	offline_capped = gone > offline_cap_seconds()

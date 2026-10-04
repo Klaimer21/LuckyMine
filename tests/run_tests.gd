@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_achievements()
 	_test_biomes()
 	_test_plurals()
+	_test_time()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -262,6 +263,118 @@ func _test_plurals() -> void:
 	Tr.set_language("en")
 	_check(Tr.fmt("+%d алмазов", [3]) == "+3 diamonds", "en keeps template")
 	Tr.set_language(saved)
+
+
+## Время подменяется через ClickerState.clock_offset: ждать по-настоящему не нужно.
+func _set_noon() -> void:
+	ClickerState.clock_offset = 0.0
+	ClickerState.clock_offset = 43200.0 - fmod(Time.get_unix_time_from_system(), 86400.0)   # полдень текущих суток
+
+
+func _test_time() -> void:
+	_set_noon()
+	var hour := 3600.0
+	var day := 86400.0
+
+	# --- экспедиция ---
+	var state := ClickerState.new()
+	_check(state.start_expedition(0), "expedition starts")
+	_check(not state.start_expedition(1), "second expedition refused while one runs")
+	_check(is_equal_approx(state.expedition_remaining(), hour), "1h expedition remaining")
+	ClickerState.clock_offset += hour - 60.0
+	_check(not state.expedition_ready() and state.claim_expedition().is_empty(), "expedition not ready 1 min early, claim refused")
+	ClickerState.clock_offset += 120.0
+	_check(state.expedition_ready(), "expedition ready after its time")
+	var loot := state.claim_expedition()
+	_check(not loot.is_empty() and float(loot["coins"]) >= 100.0, "expedition pays coins")
+	_check(not state.expedition_active() and state.claim_expedition().is_empty(), "expedition cannot be claimed twice")
+
+	# часы откатили назад: поход не растягивается дольше своей длительности
+	_set_noon()
+	var rolled := ClickerState.new()
+	rolled.start_expedition(1)
+	ClickerState.clock_offset -= 3.0 * day
+	_check(rolled.expedition_remaining() <= 4.0 * hour, "clock rollback cannot stretch an expedition")
+	# часы убежали на десять лет вперёд: поход готов, числа конечные
+	ClickerState.clock_offset += 3650.0 * day
+	_check(rolled.expedition_ready(), "far-future clock completes the expedition")
+	var far := rolled.claim_expedition()
+	_check(is_finite(float(far["coins"])) and is_finite(rolled.coins), "far-future claim stays finite")
+
+	# поход переживает сохранение и загрузку (игра закрыта 2 часа из 4)
+	_set_noon()
+	var saver := ClickerState.new()
+	saver.start_expedition(1)
+	var text := saver.serialize()
+	ClickerState.clock_offset += 2.0 * hour
+	var loaded := ClickerState.new()
+	loaded.load_from_text(text)
+	_check(loaded.expedition_active() and absf(loaded.expedition_remaining() - 2.0 * hour) < 5.0, "expedition keeps its timer across a save")
+	ClickerState.clock_offset += 2.0 * hour + 10.0
+	_check(loaded.expedition_ready(), "loaded expedition finishes on time")
+
+	# --- офлайн-доход ---
+	_set_noon()
+	var away := ClickerState.new()
+	away.add_coins(1000.0)
+	var snapshot := away.serialize()
+	var rate := away.income_per_second()
+	ClickerState.clock_offset += 3.0 * hour
+	var back := ClickerState.new()
+	var earned := back.load_from_text(snapshot)
+	_check(absf(earned - rate * 3.0 * hour) < rate * 5.0, "offline income = rate x time away")
+	_check(not back.offline_capped, "3h away is under the cap")
+	ClickerState.clock_offset += 100.0 * hour
+	var long_away := ClickerState.new()
+	var capped := long_away.load_from_text(snapshot)
+	_check(long_away.offline_capped and absf(capped - rate * ClickerState.OFFLINE_CAP_SECONDS) < rate * 5.0, "offline income capped at 8h")
+	_set_noon()
+	ClickerState.clock_offset -= 5.0 * hour
+	var rolled_back := ClickerState.new()
+	_check(rolled_back.load_from_text(snapshot) == 0.0 and rolled_back.offline_away == 0.0, "clock rolled back before launch gives no offline income")
+	ClickerState.clock_offset += 1.0e9
+	var absurd := ClickerState.new()
+	var absurd_earned := absurd.load_from_text(snapshot)
+	_check(is_finite(absurd_earned) and absurd.offline_capped, "absurd clock jump is capped and finite")
+	_set_noon()
+	var perk := ClickerState.new()
+	perk.meta["offline"] = 2
+	var perk_snapshot := perk.serialize()
+	ClickerState.clock_offset += 1000.0 * hour
+	var perk_loaded := ClickerState.new()
+	perk_loaded.load_from_text(perk_snapshot)
+	_check(is_equal_approx(perk_loaded.offline_away, ClickerState.OFFLINE_CAP_SECONDS + 8.0 * hour), "meta offline perk raises the cap by 4h per level")
+
+	# --- ежедневная награда ---
+	_set_noon()
+	var daily := ClickerState.new()
+	_check(daily.daily_available(), "daily available on a new profile")
+	var first := daily.claim_daily()
+	_check(int(first["slot"]) == 0 and not daily.daily_available() and daily.claim_daily().is_empty(), "daily claimed once per day")
+	ClickerState.clock_offset -= day
+	_check(not daily.daily_available(), "rolling the clock back does not allow a second claim")
+	ClickerState.clock_offset += day
+	ClickerState.clock_offset += day
+	_check(daily.daily_available() and daily.daily_next_slot() == 1, "next day continues the streak")
+	for expected in range(1, Retention.DAILY.size()):
+		_check(int(daily.claim_daily()["slot"]) == expected, "daily streak day %d" % (expected + 1))
+		ClickerState.clock_offset += day
+	_check(daily.daily_next_slot() == 0 and int(daily.claim_daily()["slot"]) == 0, "daily streak wraps after 7 days")
+	ClickerState.clock_offset += 3.0 * day
+	_check(daily.daily_next_slot() == 0, "a skipped day resets the streak")
+
+	# --- реклама и лихорадка: паузы идут по часам ---
+	_set_noon()
+	var timers := ClickerState.new()
+	timers.ad_mark("rush")
+	_check(absf(timers.ad_remaining("rush") - 3600.0) < 5.0, "rush ad cooldown is 1h")
+	ClickerState.clock_offset += 3601.0
+	_check(timers.ad_remaining("rush") == 0.0, "ad cooldown ends with time")
+	timers.rush_ready_at = ClickerState.now() + 100.0
+	_check(timers.rush_remaining() > 0.0 and timers.shop_available("rush") == false, "diamond rush on cooldown")
+	ClickerState.clock_offset += 101.0
+	_check(timers.rush_remaining() == 0.0, "diamond rush cooldown ends")
+	ClickerState.clock_offset = 0.0
 
 
 func _test_save_load() -> void:

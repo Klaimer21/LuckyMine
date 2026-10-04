@@ -52,7 +52,7 @@ func _process(_delta: float) -> bool:
 
 func _act() -> void:
 	var state: ClickerState = _main.state
-	match _rng.randi_range(0, 19):
+	match _rng.randi_range(0, 21):
 		0, 1, 2, 3, 4, 5, 6, 7:
 			var list: Array = []
 			_buttons(root, list)
@@ -101,6 +101,14 @@ func _act() -> void:
 			_main._table.summon_boss(_rng.randi_range(0, 6))
 		19:
 			_main._table.detonate()
+		20, 21:
+			# прыжки системных часов: вперёд, назад, на годы; потом игра «просыпается» как после офлайна
+			var jumps := [60.0, 3600.0, 86400.0, -3600.0, -86400.0 * 3.0, 86400.0 * 365.0, -86400.0 * 365.0]
+			ClickerState.clock_offset += jumps[_rng.randi() % jumps.size()]
+			if _rng.randf() < 0.4:
+				state.save()
+				var woke := ClickerState.new()
+				woke.load_save()
 
 
 func _bug(text: String) -> void:
@@ -126,6 +134,11 @@ func _check() -> void:
 			_bug("level %s = %s" % [key, s.levels[key]])
 	if not _finite(s.income_per_second()) or not _finite(s.multiplier()):
 		_bug("income/multiplier not finite: %s %s" % [s.income_per_second(), s.multiplier()])
+	if s.expedition_active() and s.expedition_remaining() > float(Retention.EXPEDITIONS[s.expedition_type]["hours"]) * 3600.0:
+		_bug("expedition remaining longer than its duration")
+	for placement in Ads.PLACEMENTS:
+		if s.ad_remaining(placement) > float(Ads.PLACEMENTS[placement]["cooldown"]) + 1.0 and abs(ClickerState.clock_offset) < 86400.0:
+			_bug("ad cooldown %s longer than configured: %s" % [placement, s.ad_remaining(placement)])
 	var modals := 0
 	for node in _main.find_children("*", "Modal", true, false):
 		if not node.is_queued_for_deletion():

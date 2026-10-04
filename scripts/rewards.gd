@@ -176,7 +176,7 @@ func on_shop_purchase(item: String) -> void:
 			state.diamonds -= cost
 		"expedition_skip":
 			state.diamonds -= cost
-			state.expedition_end = Time.get_unix_time_from_system()
+			state.expedition_end = ClickerState.now()
 			_toast.call(Tr.t("Шахтёры вернулись!"))
 		"skill_point":
 			state.diamonds -= cost
@@ -187,7 +187,7 @@ func on_shop_purchase(item: String) -> void:
 			if state.rush_remaining() > 0.0:
 				return
 			state.diamonds -= cost
-			state.rush_ready_at = Time.get_unix_time_from_system() + ClickerState.RUSH_COOLDOWN
+			state.rush_ready_at = ClickerState.now() + ClickerState.RUSH_COOLDOWN
 			state.start_rush(ClickerState.RUSH_LONG_SECONDS)
 			_toast.call(Tr.t("Золотая лихорадка ×%d") % int(ClickerState.BOOST_FACTOR))
 		"dynamite":
