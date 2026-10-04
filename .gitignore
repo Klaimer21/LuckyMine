@@ -1,0 +1,14 @@
+# Godot
+.godot/
+*.translation
+# сборки
+*.exe
+build/
+*.apk
+*.aab
+# ключи и пресеты экспорта (в них бывают пароли)
+export_presets.cfg
+*.keystore
+*.jks
+# Python
+__pycache__/

@@ -1,0 +1,115 @@
+class_name Icon
+extends Control
+## Простые векторные иконки (рисуются кодом): монета, алмаз, замок, сундук и т.д.
+
+var kind := "coin"
+var color := UiTheme.TEXT
+var width := 2.0
+var outline := Color(0, 0, 0, 0)       # контур алмаза (если задан): виден и на светлой латуни
+
+
+func setup(p_kind: String, p_color: Color, px: float) -> Icon:
+	kind = p_kind
+	color = p_color
+	custom_minimum_size = Vector2(px, px)
+	size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	width = maxf(2.0, px / 12.0)
+	queue_redraw()
+	return self
+
+
+func _draw() -> void:
+	var s := minf(size.x, size.y)
+	match kind:
+		"coin":
+			draw_circle(Vector2(s, s) / 2.0, s * 0.46, color)
+			draw_arc(Vector2(s, s) / 2.0, s * 0.3, 0.0, TAU, 24, UiTheme.DARK_ON_BRASS, width * 0.6)
+		"gem":
+			draw_colored_polygon(_pts(s, [[0.5, 0.06], [0.92, 0.38], [0.5, 0.94], [0.08, 0.38]]), color)
+			draw_polyline(_pts(s, [[0.08, 0.38], [0.92, 0.38]]), UiTheme.BG, width * 0.5)
+			if outline.a > 0.0:
+				draw_polyline(_pts(s, [[0.5, 0.06], [0.92, 0.38], [0.5, 0.94], [0.08, 0.38], [0.5, 0.06]]), outline, width * 0.8)
+		"lock":
+			draw_rect(Rect2(s * 0.2, s * 0.45, s * 0.6, s * 0.45), color, false, width)
+			draw_arc(Vector2(s * 0.5, s * 0.45), s * 0.2, PI, TAU, 16, color, width)
+		"chest":
+			draw_rect(Rect2(s * 0.12, s * 0.45, s * 0.76, s * 0.4), color, false, width)
+			draw_arc(Vector2(s * 0.5, s * 0.45), s * 0.38, PI, TAU, 20, color, width)
+			draw_line(Vector2(s * 0.5, s * 0.5), Vector2(s * 0.5, s * 0.64), color, width)
+		"crown":
+			draw_polyline(_pts(s, [[0.1, 0.78], [0.04, 0.3], [0.32, 0.5], [0.5, 0.16], [0.68, 0.5],
+					[0.96, 0.3], [0.9, 0.78], [0.1, 0.78]]), color, width)
+		"back":
+			draw_polyline(_pts(s, [[0.65, 0.15], [0.3, 0.5], [0.65, 0.85]]), color, width)
+		"swords":
+			draw_line(Vector2(s * 0.15, s * 0.85), Vector2(s * 0.85, s * 0.15), color, width)
+			draw_line(Vector2(s * 0.15, s * 0.15), Vector2(s * 0.85, s * 0.85), color, width)
+		"cube":
+			draw_polyline(_pts(s, [[0.5, 0.08], [0.9, 0.3], [0.9, 0.7], [0.5, 0.92], [0.1, 0.7],
+					[0.1, 0.3], [0.5, 0.08]]), color, width)
+			draw_polyline(_pts(s, [[0.1, 0.3], [0.5, 0.52], [0.9, 0.3]]), color, width)
+			draw_line(Vector2(s * 0.5, s * 0.52), Vector2(s * 0.5, s * 0.92), color, width)
+		"spark":
+			draw_polyline(_pts(s, [[0.5, 0.08], [0.6, 0.4], [0.92, 0.5], [0.6, 0.6], [0.5, 0.92],
+					[0.4, 0.6], [0.08, 0.5], [0.4, 0.4], [0.5, 0.08]]), color, width)
+		"tower":
+			draw_polyline(_pts(s, [[0.22, 0.92], [0.22, 0.3], [0.78, 0.3], [0.78, 0.92]]), color, width)
+			draw_polyline(_pts(s, [[0.14, 0.3], [0.14, 0.12], [0.34, 0.12], [0.34, 0.2], [0.66, 0.2],
+					[0.66, 0.12], [0.86, 0.12], [0.86, 0.3]]), color, width)
+		"bag":
+			draw_polyline(_pts(s, [[0.22, 0.32], [0.78, 0.32], [0.86, 0.9], [0.14, 0.9], [0.22, 0.32]]),
+					color, width)
+			draw_arc(Vector2(s * 0.5, s * 0.32), s * 0.18, PI, TAU, 12, color, width)
+		"gear":
+			draw_arc(Vector2(s, s) / 2.0, s * 0.2, 0.0, TAU, 20, color, width)
+			for i in 8:
+				var a := i * TAU / 8.0
+				draw_line(Vector2(s, s) / 2.0 + Vector2(cos(a), sin(a)) * s * 0.32,
+						Vector2(s, s) / 2.0 + Vector2(cos(a), sin(a)) * s * 0.46, color, width)
+		"clock":
+			draw_arc(Vector2(s, s) / 2.0, s * 0.44, 0.0, TAU, 24, color, width)
+			draw_polyline(_pts(s, [[0.5, 0.25], [0.5, 0.5], [0.68, 0.6]]), color, width)
+		"check":
+			draw_polyline(_pts(s, [[0.15, 0.55], [0.4, 0.8], [0.88, 0.25]]), color, width * 1.3)
+		"sword":
+			draw_line(Vector2(s * 0.2, s * 0.8), Vector2(s * 0.8, s * 0.2), color, width)
+			draw_line(Vector2(s * 0.3, s * 0.45), Vector2(s * 0.55, s * 0.7), color, width)
+		"rain":
+			for k in [-1, 0, 1]:
+				var x: float = s * (0.5 + k * 0.22)
+				var off: float = absf(k) * s * 0.08
+				draw_line(Vector2(x, s * 0.12 + off), Vector2(x, s * 0.52 + off), color, width)
+			draw_rect(Rect2(s * 0.34, s * 0.7, s * 0.32, s * 0.2), color, false, width)
+		"tap":
+			draw_arc(Vector2(s * 0.5, s * 0.34), s * 0.2, PI, TAU, 14, color, width)
+			draw_polyline(_pts(s, [[0.3, 0.34], [0.3, 0.84], [0.7, 0.84], [0.7, 0.34]]), color, width)
+		"rock":
+			draw_polyline(_pts(s, [[0.08, 0.78], [0.14, 0.46], [0.36, 0.2], [0.62, 0.16], [0.86, 0.4],
+					[0.92, 0.78], [0.08, 0.78]]), color, width)
+			draw_polyline(_pts(s, [[0.36, 0.2], [0.44, 0.5], [0.62, 0.16]]), color, width)
+			draw_line(Vector2(s * 0.44, s * 0.5), Vector2(s * 0.5, s * 0.78), color, width)
+		"dynamite":
+			draw_rect(Rect2(s * 0.3, s * 0.38, s * 0.4, s * 0.52), color, false, width)
+			draw_line(Vector2(s * 0.3, s * 0.56), Vector2(s * 0.7, s * 0.56), color, width)
+			draw_line(Vector2(s * 0.5, s * 0.38), Vector2(s * 0.5, s * 0.24), color, width)
+			draw_polyline(_pts(s, [[0.5, 0.24], [0.62, 0.14], [0.76, 0.18]]), color, width)
+		"journal":
+			draw_rect(Rect2(s * 0.2, s * 0.14, s * 0.6, s * 0.72), color, false, width)
+			draw_line(Vector2(s * 0.34, s * 0.14), Vector2(s * 0.34, s * 0.86), color, width)
+			draw_line(Vector2(s * 0.48, s * 0.36), Vector2(s * 0.68, s * 0.36), color, width)
+			draw_line(Vector2(s * 0.48, s * 0.52), Vector2(s * 0.68, s * 0.52), color, width)
+		"cross":
+			draw_line(Vector2(s * 0.22, s * 0.22), Vector2(s * 0.78, s * 0.78), color, width)
+			draw_line(Vector2(s * 0.78, s * 0.22), Vector2(s * 0.22, s * 0.78), color, width)
+		"star":
+			draw_polyline(_pts(s, [[0.5, 0.08], [0.62, 0.38], [0.94, 0.4], [0.7, 0.6], [0.78, 0.92],
+					[0.5, 0.74], [0.22, 0.92], [0.3, 0.6], [0.06, 0.4], [0.38, 0.38], [0.5, 0.08]]),
+					color, width)
+
+
+func _pts(s: float, list: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for p in list:
+		out.append(Vector2(float(p[0]) * s, float(p[1]) * s))
+	return out
