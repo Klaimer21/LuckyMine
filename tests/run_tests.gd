@@ -105,6 +105,28 @@ func _test_ads() -> void:
 	state.ad_mark("offline")
 	_check(state.ad_remaining("offline") <= 0.0, "offline ad has no cooldown")
 	_check(state.ad_diamonds() >= 3, "ad diamonds at least 3")
+	# двойной тап по рекламе: второй показ (и вторая награда в обход паузы) не запускается
+	var host := Control.new()
+	root.add_child(host)
+	var ads := Ads.new()
+	ads.setup(host, state)
+	var rewards := [0]
+	ads.request("rush", func() -> void: rewards[0] += 1)
+	ads.request("rush", func() -> void: rewards[0] += 1)
+	_check(ads.is_busy() and host.get_child_count() == 1, "second ad request ignored while busy")
+	ads.request("nonexistent", func() -> void: rewards[0] += 1)
+	_check(host.get_child_count() == 1 and rewards[0] == 0, "unknown ad placement ignored")
+	host.get_child(0).close()
+	_check(not ads.is_busy() and rewards[0] == 0, "closing the ad early frees the slot and gives nothing")
+	host.queue_free()
+	# NaN вместо монет ничего не покупает; чрезмерные количества не ломают цены
+	var broken := ClickerState.new()
+	broken.coins = NAN
+	_check(broken.buy_n("rain", 1) == 0 and broken.levels["rain"] == 0, "NaN coins buy nothing")
+	var rich := ClickerState.new()
+	rich.coins = 1.0e300
+	_check(rich.buy_n("rain", -5) == 0 and rich.buy_n("rain", 1000000) == 0, "negative and absurd bulk buys rejected")
+	_check(ClickerState.import_code("LM1:" + "A".repeat(5000000)) == false, "oversized code rejected")
 
 
 func _test_autobuy() -> void:
@@ -187,6 +209,10 @@ func _test_skills() -> void:
 	state.respec()
 	_check(state.skill_points > spent, "respec refunds points")
 	_check(state.skill_level("yield") == 0, "respec clears levels")
+	state.skills["dynamite"] = 1
+	state.dynamite_stock = state.dynamite_max()
+	state.respec()
+	_check(state.dynamite_stock <= state.dynamite_max(), "respec trims dynamite stock")
 
 
 func _test_collection() -> void:

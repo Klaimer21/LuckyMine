@@ -16,6 +16,7 @@ const PLACEMENTS := {
 
 var host: Control
 var state: ClickerState
+var _busy := false                   # ролик уже идёт: второе нажатие (двойной тап) не запускает второй показ и вторую награду
 
 
 func setup(host_node: Control, game_state: ClickerState) -> void:
@@ -24,17 +25,25 @@ func setup(host_node: Control, game_state: ClickerState) -> void:
 
 
 ## Показывает рекламу и по окончании вызывает on_reward. Закрытие раньше времени награды не даёт.
+func is_busy() -> bool:
+	return _busy
+
+
 func request(placement: String, on_reward: Callable) -> void:
+	if not PLACEMENTS.has(placement) or _busy:
+		return
 	if state.ads_removed:
 		on_reward.call()
 		return
+	_busy = true
 	_show_video(func() -> void:
 			state.ads_watched += 1
 			state.ad_mark(placement)
-			on_reward.call())
+			on_reward.call(),
+			func() -> void: _busy = false)
 
 
-func _show_video(finish: Callable) -> void:
+func _show_video(finish: Callable, on_closed: Callable) -> void:
 	var modal := Modal.new()
 	modal.body.add_child(UiTheme.make_label("Реклама", 50, UiTheme.TEXT, true))
 	var note := UiTheme.make_label(Tr.t("Здесь будет рекламный ролик. Это заглушка для разработки."), 28, UiTheme.MUTE)
@@ -52,3 +61,4 @@ func _show_video(finish: Callable) -> void:
 			modal.close()
 			finish.call())
 	modal.closed.connect(tween.kill)
+	modal.closed.connect(on_closed)

@@ -60,6 +60,8 @@ func _confirm(title: String, text: String, ok_text: String, on_ok: Callable) -> 
 	row.add_child(cancel)
 	var ok := UiTheme.make_button(ok_text, true, 32)
 	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ok.pressed.connect(func() -> void: on_ok.call(modal))
+	ok.pressed.connect(func() -> void:
+			ok.disabled = true               # двойной тап не должен выполнить действие дважды
+			on_ok.call(modal))
 	row.add_child(ok)
 	host.add_child(modal)

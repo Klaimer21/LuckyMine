@@ -59,7 +59,13 @@ func _process(delta: float) -> bool:
 		[11.1, func() -> void: _shot("11_offline")],
 		[11.2, func() -> void: _main._info.show_intro()],
 		[12.0, func() -> void: _shot("12_intro")],
-		[12.1, func() -> void: quit()],
+		[12.1, func() -> void:
+			_main.settings.show_fps = true
+			_main._perf.refresh_fps_visibility()
+			_main._perf.start_stress()],
+		[13.5, func() -> void: _shot("13_stress")],
+		[28.5, func() -> void: _shot("14_report")],
+		[28.6, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()

@@ -28,19 +28,11 @@ var _boost_shown := false
 var _prestige_button: Button
 var _prestige_key := -1
 var _prestige_hinted := false
-var _fps_label: Label
 var _depth_label: Label
 var _depth_bar: ProgressBar
 var _biome := 0
 var _toast: Label
 var _toast_time := 0.0
-var _fps_timer := 0.0
-var _stress_active := false
-var _stress_time := 0.0
-var _stress_deltas := PackedFloat32Array()
-var _stress_peak := 0
-var _stress_auto_before := true
-var _stress_label: Label
 var _throw_button: Button
 var _mode_buttons: Array[Button] = []
 var _auto_button: Button
@@ -49,9 +41,6 @@ var _journal: JournalScreen
 var _tutorial: Tutorial
 var _hint_card: HintCard
 var _peek: CompanionPeek
-var _fps_watch_time := 0.0
-var _fps_watch_frames := 0
-var _fps_hint_done := false
 var _journal_button: Button
 var _diamonds_shown := -1
 var _points_shown := false
@@ -69,11 +58,10 @@ var _shown_coins := 0.0
 var _shown_text := ""
 var _bump := 0.0
 var _afford_mask := -1
-var _offline_earned := 0.0
-var _ads := Ads.new()
 var _save_dialogs := SaveDialogs.new()
 var _info := InfoDialogs.new()
-var _offline_doubled := false
+var _perf := PerfMonitor.new()
+var _rewards := Rewards.new()
 var _autobuy_time := 0.0
 var _autobuy_button: Button
 
@@ -86,7 +74,7 @@ func _ready() -> void:
 	if not state.style_unlocked(settings.rock_style):
 		settings.rock_style = 0
 	_shown_coins = state.coins
-	_offline_earned = offline
+	_rewards.offline_earned = offline
 
 	sfx = Sfx.new()
 	add_child(sfx)
@@ -108,7 +96,7 @@ func _ready() -> void:
 			state.start_rush(ClickerState.BOOST_SECONDS, false)
 			state.golden_caught += 1
 			if state.golden_caught % 3 == 0:
-				_award_dynamite(1)
+				_rewards.award_dynamite(1)
 			_say_hint("first_rush", "Золотая лихорадка: ×7 к добыче на 15 секунд. На 5 минут её можно купить в журнале за алмазы или получить за рекламу.")
 			_show_toast(Tr.t("Золотая лихорадка ×%d") % int(ClickerState.BOOST_FACTOR))
 			sfx.play("rush", -3.0)
@@ -123,7 +111,7 @@ func _ready() -> void:
 	_table.boss_defeated.connect(_on_boss_defeated)
 	_table.boss_gone.connect(func() -> void: _show_toast(Tr.t("Хранитель рассыпался")))
 	_table.landed.connect(func(payout: float, real: bool) -> void:
-			if not _stress_active:
+			if not _perf.stress_active:
 				_earned_batch += payout
 			_bump = minf(1.0, _bump + (0.35 if real else 0.15))
 			if real:
@@ -141,11 +129,18 @@ func _ready() -> void:
 	layer.add_child(_ui)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
-	_ads.setup(_ui, state)
 	_save_dialogs.setup(_ui, state, _show_toast)
+	_rewards.setup(_ui, state, settings, sfx, _table, get_viewport(), _show_toast, _refresh,
+			func() -> void:
+				if _journal.visible:
+					_journal.rebuild(),
+			func() -> void: _dynamite_shown = -1,
+			func() -> int: return _biome)
+	_perf.setup(_ui, state, settings, _table, get_viewport(), func() -> void:
+			_say_hint("low_fps", "Мало кадров в секунду. В настройках можно понизить качество, а «Тест нагрузки» покажет, что тянет устройство."))
 	_info.setup(_ui, state, settings, sfx, _show_toast, func() -> void: _tutorial.start(), func() -> void:
-			if not _offline_doubled:
-				_on_ad_requested("offline"))
+			if not _rewards.offline_doubled():
+				_rewards.on_ad_requested("offline"))
 	_build_ui()
 	settings.apply(get_viewport(), _table)
 	get_tree().create_timer(1.0).timeout.connect(func() -> void:
@@ -154,8 +149,8 @@ func _ready() -> void:
 	get_tree().create_timer(1.5).timeout.connect(func() -> void:
 			if not state.tutorial_done:
 				return
-			if state.offline_away >= 60.0 and _offline_earned >= 1.0:
-				_info.show_offline(_offline_earned).closed.connect(func() -> void:
+			if state.offline_away >= 60.0 and _rewards.offline_earned >= 1.0:
+				_info.show_offline(_rewards.offline_earned).closed.connect(func() -> void:
 						if state.daily_available():
 							_info.show_daily())
 			elif state.daily_available():
@@ -173,13 +168,11 @@ func _process(delta: float) -> void:
 		state.add_coins(_earned_batch)
 		_earned_batch = 0.0
 	_update_counter(delta)
-	_update_fps(delta)
-	_update_stress(delta)
+	_perf.update(delta)
 	_update_depth(delta)
 	_update_abilities(delta)
 	_update_autobuy(delta)
 	_update_prestige_button()
-	_watch_fps(delta)
 	if _message_time > 0.0:
 		_message_time -= delta
 		if _message_time <= 0.0:
@@ -221,72 +214,6 @@ func _update_counter(delta: float) -> void:
 		_refresh()
 
 
-## Тест нагрузки: 15 секунд максимального потока глыб, замер кадров, итог с рекомендацией.
-func _start_stress() -> void:
-	if _stress_active:
-		return
-	_stress_active = true
-	_stress_time = 0.0
-	_stress_deltas = PackedFloat32Array()
-	_stress_peak = 0
-	_stress_auto_before = _table.auto_throw
-	_table.stress_rate = 500.0
-	_stress_label.visible = true
-
-
-func _update_stress(delta: float) -> void:
-	if not _stress_active:
-		return
-	_stress_time += delta
-	if _stress_time > 1.0:                      # первую секунду не считаем: сцена прогревается
-		_stress_deltas.append(delta)
-	_stress_peak = maxi(_stress_peak, _table.rock_count())
-	_stress_label.text = Tr.t("Тест нагрузки") + "  %d" % maxi(0, 15 - int(_stress_time))
-	if _stress_time >= 15.0:
-		_finish_stress()
-
-
-func _finish_stress() -> void:
-	_stress_active = false
-	_table.stress_rate = 0.0
-	_table.auto_throw = _stress_auto_before
-	_stress_label.visible = false
-	var sorted := Array(_stress_deltas)
-	sorted.sort()
-	var total := 0.0
-	for d in sorted:
-		total += float(d)
-	var average_fps := float(sorted.size()) / maxf(total, 0.0001)
-	var worst_count := maxi(1, int(sorted.size() / 100.0))
-	var worst := 0.0
-	for i in worst_count:
-		worst += float(sorted[sorted.size() - 1 - i])
-	var low_fps := 1.0 / maxf(worst / worst_count, 0.0001)
-
-	var report := Modal.new()
-	report.body.add_child(UiTheme.make_label("Тест нагрузки", 50, UiTheme.TEXT, true))
-	report.body.add_child(UiTheme.make_label(Tr.t("Средний FPS: %d") % int(average_fps), 38, UiTheme.TEXT))
-	report.body.add_child(UiTheme.make_label(Tr.t("Нижние 1%%: %d") % int(low_fps), 38, UiTheme.TEXT))
-	report.body.add_child(UiTheme.make_label(Tr.t("Глыб одновременно: %d") % _stress_peak, 32, UiTheme.MUTE))
-	var weak := average_fps < 45.0 or low_fps < 25.0
-	var verdict := UiTheme.make_label("FPS низкий: лучше понизить качество." if weak else "Хорошо: качество можно оставить.",
-			30, UiTheme.BRASS if weak else UiTheme.MUTE)
-	verdict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	report.body.add_child(verdict)
-	if weak and settings.quality > 0:
-		var lower := UiTheme.make_button("Понизить качество", true, 32)
-		lower.pressed.connect(func() -> void:
-				settings.quality -= 1
-				settings.apply(get_viewport(), _table)
-				settings.save()
-				report.close())
-		report.body.add_child(lower)
-	var close := UiTheme.make_button("Закрыть", false, 32)
-	close.pressed.connect(report.close)
-	report.body.add_child(close)
-	_ui.add_child(report)
-
-
 ## Глубина и зона: подпись, полоска до следующей зоны, переход при смене зоны.
 func _update_depth(delta: float) -> void:
 	var total := state.total_earned
@@ -300,7 +227,7 @@ func _update_depth(delta: float) -> void:
 	var index := Biomes.index_for(total, state.planet_scale())
 	if state.planet_ready():
 		_say_hint("planet_ready", "Ядро достигнуто! В журнале → «Планета» откроется «Новая планета»: звёздная пыль и мета-улучшения.")
-	if index != _biome and not _stress_active:
+	if index != _biome and not _perf.stress_active:
 		_biome = index
 		_table.set_biome(index, true)
 	if _toast_time > 0.0:
@@ -436,26 +363,10 @@ func _on_tutorial_done() -> void:
 
 ## Подсказка по требованию: один раз за всю игру (и не во время обучения).
 func _say_hint(id: String, text: String) -> void:
-	if not state.tutorial_done or _stress_active:
+	if not state.tutorial_done or _perf.stress_active:
 		return
 	if state.take_hint(id):
 		_hint_card.show_hint(Tr.t(text))
-
-
-## Следим за кадрами: если стабильно мало, один раз советуем снизить качество (только на слабом железе).
-func _watch_fps(delta: float) -> void:
-	if _fps_hint_done or _stress_active or not state.tutorial_done:
-		return
-	_fps_watch_time += delta
-	_fps_watch_frames += 1
-	if _fps_watch_time < 10.0:
-		return
-	var fps := float(_fps_watch_frames) / _fps_watch_time
-	_fps_watch_time = 0.0
-	_fps_watch_frames = 0
-	if fps < 35.0 and settings.quality > 0:
-		_fps_hint_done = true
-		_say_hint("low_fps", "Мало кадров в секунду. В настройках можно понизить качество, а «Тест нагрузки» покажет, что тянет устройство.")
 
 
 func _show_toast(text: String) -> void:
@@ -471,7 +382,7 @@ func _on_biome_changed(index: int) -> void:
 	music.play_zone(index)
 	if index > state.dynamite_zone_best:
 		state.dynamite_zone_best = index
-		_award_dynamite(2)
+		_rewards.award_dynamite(2)
 	_say_hint("first_zone", "Новая зона: меняются вид, музыка и руда, а доход растёт. Заглядывайте в журнал: там награды за зоны.")
 	match index:
 		2:
@@ -543,7 +454,7 @@ func _style_dynamite(kind: String) -> void:
 ## Подобрана находка: журнал, золотой запал, алмазы.
 func _on_ore_collected(ore: int) -> void:
 	sfx.ore(ore)
-	if _stress_active:
+	if _perf.stress_active:
 		return
 	state.collect_find(ore)
 	_say_hint("first_ore", "Находка! Руда копится в журнале: каждая веха коллекции даёт постоянный бонус к доходу.")
@@ -557,109 +468,12 @@ func _on_boss_defeated(zone: int) -> void:
 	var gems := int(round((2 + zone) * state.boss_reward_factor()))
 	state.diamonds += gems
 	state.bosses_defeated += 1
-	_award_dynamite(2)
+	_rewards.award_dynamite(2)
 	state.save()
 	_show_toast(Tr.fmt("Хранитель побеждён! +%d алмазов", [gems]))
 	sfx.play("boss_break", -3.0)
 	sfx.play("claim", -8.0)
 	settings.vibrate(80)
-
-
-func _on_expedition_start(index: int) -> void:
-	if state.start_expedition(index):
-		sfx.play("tick", -4.0)
-		state.save()
-
-
-func _on_expedition_claim() -> void:
-	var result := state.claim_expedition()
-	if result.is_empty():
-		return
-	state.save()
-	sfx.play("claim", -4.0)
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("Экспедиция вернулась", 50, UiTheme.TEXT, true))
-	modal.body.add_child(UiTheme.make_label(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])), 34, UiTheme.BRASS))
-	if int(result["diamonds"]) > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Алмазы: +%d") % int(result["diamonds"]), 34, UiTheme.TEXT))
-	if int(result["dynamite"]) > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Динамит +%d") % int(result["dynamite"]), 34, UiTheme.TEXT))
-	var found: Dictionary = result["found"]
-	var names := ["Медь", "Железо", "Золото", "Алмаз"]
-	for ore in found:
-		if int(found[ore]) > 0:
-			modal.body.add_child(UiTheme.make_label("%s: +%d" % [Tr.t(names[int(ore) - 1]), int(found[ore])], 28, UiTheme.MUTE))
-	var close := UiTheme.make_button("Закрыть", true, 34)
-	close.pressed.connect(modal.close)
-	modal.body.add_child(close)
-	_ui.add_child(modal)
-
-
-## Реклама за награду: ролик (пока заглушка) и выдача награды по месту.
-func _on_ad_requested(placement: String) -> void:
-	if state.ad_remaining(placement) > 0.0:
-		return
-	_ads.request(placement, func() -> void: _grant_ad_reward(placement))
-
-
-func _grant_ad_reward(placement: String) -> void:
-	match placement:
-		"offline":
-			if _offline_doubled:
-				return
-			_offline_doubled = true
-			state.add_coins(_offline_earned)
-			_show_toast(Tr.t("Офлайн-доход ×2: +%s") % NumberFormat.short(_offline_earned))
-		"rush":
-			state.start_rush(ClickerState.RUSH_LONG_SECONDS)
-			_show_toast(Tr.t("Золотая лихорадка ×%d") % int(ClickerState.BOOST_FACTOR))
-		"dynamite":
-			_award_dynamite(2)
-		"diamonds":
-			var gems := state.ad_diamonds()
-			state.diamonds += gems
-			_show_toast(Tr.t("Алмазы: +%d") % gems)
-		"expedition":
-			state.expedition_end -= 3600.0
-			_show_toast(Tr.t("Поход ускорен на 1 час"))
-	sfx.play("claim", -4.0)
-	settings.vibrate(30)
-	state.save()
-	_refresh()
-	if _journal.visible:
-		_journal.rebuild()
-
-
-func _on_achievement_claim_all() -> void:
-	var count := 0
-	for achievement in Retention.ACHIEVEMENTS:
-		if not state.claim_achievement(achievement).is_empty():
-			count += 1
-	if count > 0:
-		state.save()
-		sfx.play("claim", -4.0)
-		settings.vibrate(30)
-		_show_toast(Tr.t("Наград получено") + ": %d" % count)
-
-
-func _on_achievement_claim(id: String) -> void:
-	for achievement in Retention.ACHIEVEMENTS:
-		if str(achievement["id"]) == id:
-			if state.claim_achievement(achievement).is_empty():
-				return
-			state.save()
-			sfx.play("claim", -4.0)
-			settings.vibrate(30)
-			_show_toast(Tr.t("Награда получена") + ": " + Tr.t(str(achievement["name"])))
-			return
-
-
-func _on_meta_purchase(id: String) -> void:
-	if state.buy_meta(id):
-		sfx.play("coin", -5.0)
-		settings.vibrate(20)
-		state.save()
-		_refresh()
 
 
 ## «Новая планета»: окно подтверждения, затем сброс забега, смена оттенка мира и возврат в первую зону.
@@ -727,85 +541,8 @@ func _on_planet_requested() -> void:
 	_ui.add_child(modal)
 
 
-func _on_skill_purchase(branch: String) -> void:
-	if state.buy_skill(branch):
-		sfx.play("coin", -5.0)
-		settings.vibrate(20)
-		state.save()
-		_refresh()
-
-
-func _on_respec() -> void:
-	var cost := state.shop_cost("respec")
-	if state.diamonds < cost:
-		return
-	state.diamonds -= cost
-	state.respec()
-	sfx.play("tick", -4.0)
-	state.save()
-	_refresh()
-
-
-func _on_shop_purchase(item: String) -> void:
-	var cost := state.shop_cost(item)
-	if state.diamonds < cost or not state.shop_available(item):
-		return
-	match item:
-		"golden":
-			if not _table.summon_golden():
-				_show_toast(Tr.t("Золотая глыба уже на столе"))
-				return
-			state.diamonds -= cost
-		"boss":
-			if not _table.summon_boss(_biome):
-				_show_toast(Tr.t("Хранитель уже на столе"))
-				return
-			state.diamonds -= cost
-		"expedition_skip":
-			state.diamonds -= cost
-			state.expedition_end = Time.get_unix_time_from_system()
-			_show_toast(Tr.t("Шахтёры вернулись!"))
-		"skill_point":
-			state.diamonds -= cost
-			state.skill_points += 1
-			state.skill_points_bought += 1
-			_show_toast(Tr.t("Очко навыков +1"))
-		"rush":
-			if state.rush_remaining() > 0.0:
-				return
-			state.diamonds -= cost
-			state.rush_ready_at = Time.get_unix_time_from_system() + ClickerState.RUSH_COOLDOWN
-			state.start_rush(ClickerState.RUSH_LONG_SECONDS)
-			_show_toast(Tr.t("Золотая лихорадка ×%d") % int(ClickerState.BOOST_FACTOR))
-		"dynamite":
-			state.diamonds -= cost
-			_award_dynamite(3)
-		_:
-			if item.begins_with("style_"):
-				var style_index := int(item.substr(6))
-				state.diamonds -= cost
-				state.styles_bought.append(style_index)
-				settings.rock_style = style_index
-				settings.save()
-				settings.apply(get_viewport(), _table)
-				_show_toast(Tr.t("Новая порода: ") + Tr.t(Settings.STYLE_NAMES[style_index]))
-	sfx.play("coin", -5.0)
-	settings.vibrate(20)
-	state.save()
-
-
-## Выдаёт динамит на склад и сообщает об этом (сколько влезло).
-func _award_dynamite(amount: int) -> void:
-	var added := state.add_dynamite(amount)
-	if added > 0:
-		_show_toast(Tr.t("Динамит +%d") % added)
-	else:
-		_show_toast(Tr.t("Склад динамита полон"))
-	_dynamite_shown = -1
-
-
 func _on_dynamite_pressed() -> void:
-	if _stress_active:
+	if _perf.stress_active:
 		return
 	if not state.use_dynamite():
 		_say_hint("dynamite_empty", "Динамит закончился. Его дают за новые зоны, хранителей, золотые глыбы, походы и награды; можно купить за алмазы в журнале или получить за рекламу.")
@@ -819,14 +556,6 @@ func _on_dynamite_pressed() -> void:
 		state.start_mini(6.0)
 	sfx.play("boom", -2.0)
 	settings.vibrate(60)
-
-
-func _update_fps(delta: float) -> void:
-	_fps_label.visible = settings.show_fps
-	_fps_timer += delta
-	if _fps_timer >= 0.25 and settings.show_fps:
-		_fps_timer = 0.0
-		_fps_label.text = "FPS %d  ·  %d" % [int(Engine.get_frames_per_second()), _table.rock_count()]
 
 
 # ---------- Интерфейс ----------
@@ -853,25 +582,13 @@ func _build_ui() -> void:
 	_build_atmosphere()
 	_build_top()
 
-	_fps_label = UiTheme.make_label("", 22, UiTheme.MUTE)
-	_fps_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	_fps_label.offset_left = -240
-	_fps_label.offset_right = -28
-	_fps_label.offset_top = 98
-	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_ui.add_child(_fps_label)
+	_perf.build()
 	_toast = UiTheme.make_label("", 52, UiTheme.TEXT, true)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_toast.offset_top = 420
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.modulate.a = 0.0
 	_ui.add_child(_toast)
-	_stress_label = UiTheme.make_label("", 34, UiTheme.BRASS, true)
-	_stress_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_stress_label.offset_top = 330
-	_stress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stress_label.visible = false
-	_ui.add_child(_stress_label)
 
 	_hint = UiTheme.make_label("Касайтесь стола или жмите «Обвал»", 30, Color(UiTheme.MUTE, 0.8))
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
@@ -896,16 +613,16 @@ func _build_ui() -> void:
 	_journal = JournalScreen.new()
 	_ui.add_child(_journal)
 	_journal.setup(state)
-	_journal.purchase.connect(_on_shop_purchase)
-	_journal.skill_purchase.connect(_on_skill_purchase)
-	_journal.meta_purchase.connect(_on_meta_purchase)
+	_journal.purchase.connect(_rewards.on_shop_purchase)
+	_journal.skill_purchase.connect(_rewards.on_skill_purchase)
+	_journal.meta_purchase.connect(_rewards.on_meta_purchase)
 	_journal.planet_requested.connect(_on_planet_requested)
-	_journal.respec_requested.connect(_on_respec)
-	_journal.expedition_start.connect(_on_expedition_start)
-	_journal.expedition_claim.connect(_on_expedition_claim)
-	_journal.achievement_claim.connect(_on_achievement_claim)
-	_journal.achievement_claim_all.connect(_on_achievement_claim_all)
-	_journal.ad_requested.connect(_on_ad_requested)
+	_journal.respec_requested.connect(_rewards.on_respec)
+	_journal.expedition_start.connect(_rewards.on_expedition_start)
+	_journal.expedition_claim.connect(_rewards.on_expedition_claim)
+	_journal.achievement_claim.connect(_rewards.on_achievement_claim)
+	_journal.achievement_claim_all.connect(_rewards.on_achievement_claim_all)
+	_journal.ad_requested.connect(_rewards.on_ad_requested)
 	_settings_screen = SettingsScreen.new()
 	_ui.add_child(_settings_screen)
 	_settings_screen.setup(settings, _table, state)
@@ -913,7 +630,7 @@ func _build_ui() -> void:
 	_settings_screen.reset_requested.connect(_save_dialogs.reset_progress)
 	_settings_screen.export_requested.connect(_save_dialogs.export_code)
 	_settings_screen.import_requested.connect(_save_dialogs.import_code)
-	_settings_screen.stress_requested.connect(_start_stress)
+	_settings_screen.stress_requested.connect(_perf.start_stress)
 	_settings_screen.hints_reset_requested.connect(func() -> void:
 			state.hints_seen.clear()
 			_show_toast(Tr.t("Подсказки включены снова")))
@@ -921,7 +638,7 @@ func _build_ui() -> void:
 	_settings_screen.tutorial_requested.connect(func() -> void:
 			state.tutorial_done = false
 			_tutorial.start())
-	_settings_screen.settings_changed.connect(func() -> void: _fps_label.visible = settings.show_fps)
+	_settings_screen.settings_changed.connect(_perf.refresh_fps_visibility)
 	_refresh()
 
 

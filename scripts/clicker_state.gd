@@ -174,7 +174,7 @@ func buy_n(key: String, n: int) -> int:
 	if n < 1:
 		return 0
 	var price := cost_for(key, n)
-	if coins < price:
+	if not (coins >= price):          # так и NaN вместо монет ничего не покупает
 		return 0
 	coins -= price
 	levels[key] += n
@@ -212,6 +212,7 @@ func respec() -> void:
 		for level in skill_level(branch):
 			skill_points += int(Skills.costs_of(branch)[level])
 		skills[branch] = 0
+	dynamite_stock = mini(dynamite_stock, dynamite_max())      # склад уменьшился: лишний динамит не остаётся
 
 
 func dynamite_max() -> int:
@@ -765,7 +766,10 @@ static func _sign(payload: String) -> String:
 static func _read_save_file(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
 		return {}
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null or file.get_length() > MAX_SAVE_BYTES:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
 	if typeof(parsed) != TYPE_DICTIONARY:
 		return {}
 	if not parsed.has("payload"):
@@ -888,6 +892,7 @@ static func delete_save() -> void:
 # ---------- Перенос прогресса кодом ----------
 
 const CODE_PREFIX := "LM1:"
+const MAX_SAVE_BYTES := 2000000          # файл или код больше этого не читаем (защита от мусора в буфере обмена)
 
 
 ## Код со всем прогрессом: копируется в буфер обмена и вставляется на другом устройстве.
@@ -898,6 +903,8 @@ func export_code() -> String:
 ## Проверяет код и кладёт его на место сохранения (текущее уходит в запасную копию). true — код принят.
 ## Код с неверной подписью (правленный) не принимается. После успеха сцену нужно перезагрузить.
 static func import_code(code: String) -> bool:
+	if code.length() > MAX_SAVE_BYTES * 2:
+		return false
 	code = code.strip_edges().replace("\n", "").replace("\r", "").replace(" ", "")
 	if not code.begins_with(CODE_PREFIX):
 		return false
