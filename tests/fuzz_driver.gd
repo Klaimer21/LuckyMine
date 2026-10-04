@@ -65,8 +65,8 @@ func _act() -> void:
 			if _rng.randf() < 0.1 and is_instance_valid(button):
 				_click(button)
 		8:
-			_main._toggle_upgrades()
-			_main._toggle_upgrades()
+			_main._sheet.toggle()
+			_main._sheet.toggle()
 		9:
 			_main._on_throw_pressed()
 		10:

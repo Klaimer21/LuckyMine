@@ -2,8 +2,6 @@ extends Node
 ## LuckyMine: рудный стол, шапка с монетами, строки улучшений, шестерёнка настроек.
 ## Глыбы падают сами, по кнопке «Обвал» и по касанию стола; каждая, разбиваясь, приносит монеты.
 
-const UPGRADE_NAMES := {"rain": "Камнепад", "tap": "Сила обвала", "faces": "Глубина", "mult": "Добыча"}
-const UPGRADE_ICONS := {"rain": "rain", "tap": "tap", "faces": "gem", "mult": "cross"}
 const SAVE_EVERY := 5.0
 const PANEL_HEIGHT := 350               # нижняя панель: «Обвал», «Авто», «Динамит» и кнопка «Улучшения»
 
@@ -18,9 +16,6 @@ var sfx: Sfx
 var music: Music
 var _throw_row: HBoxContainer
 var _upgrades_button: Button
-var _sheet_open := false
-var _sheet_tween: Tween
-var _upgrades_sheet: PanelContainer      # меню улучшений: выезжает над нижней панелью
 var _dynamite_button: Button
 var _dynamite_shown := -1
 var _boost_label: Label
@@ -34,7 +29,6 @@ var _biome := 0
 var _toast: Label
 var _toast_time := 0.0
 var _throw_button: Button
-var _mode_buttons: Array[Button] = []
 var _auto_button: Button
 var _settings_screen: SettingsScreen
 var _journal: JournalScreen
@@ -50,20 +44,18 @@ var _rate_label: Label
 var _message_label: Label
 var _hint: Label
 var _hint_hiding := false
-var _rows: Dictionary = {}            # ключ улучшения -> {title, effect, button, coin}
 var _save_timer := 0.0
 var _message_time := 0.0
 var _earned_batch := 0.0
 var _shown_coins := 0.0
 var _shown_text := ""
 var _bump := 0.0
-var _afford_mask := -1
 var _save_dialogs := SaveDialogs.new()
 var _info := InfoDialogs.new()
 var _perf := PerfMonitor.new()
 var _rewards := Rewards.new()
-var _autobuy_time := 0.0
-var _autobuy_button: Button
+var _progression := ProgressionDialogs.new()
+var _sheet := UpgradesSheet.new()
 
 
 func _ready() -> void:
@@ -130,6 +122,24 @@ func _ready() -> void:
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_save_dialogs.setup(_ui, state, _show_toast)
+	_sheet.setup(_ui, state, settings, sfx, PANEL_HEIGHT, _refresh, func(px: float) -> void: _hint_card.set_lift(px),
+			func(key: String) -> void: _tutorial.notify("buy_" + key))
+	_progression.setup(_ui, state, _table, sfx, music, settings, _show_toast,
+			func() -> void:
+				_earned_batch = 0.0
+				_shown_coins = state.coins
+				_prestige_key = -1
+				_sheet.reset_affordability()
+				_say_hint("after_prestige", "Жилы прибавили доход навсегда. Новые очки навыков тратятся в журнале («Навыки»). Зоны и коллекция остались при вас."),
+			func() -> void:
+				_earned_batch = 0.0
+				_shown_coins = 0.0
+				_biome = 0
+				_planet_arrival_line()
+				_dust.color = Color((Biomes.ACCENTS[0] as Color) * Biomes.planet_tint(state.planet), 0.32)
+				_prestige_key = -1
+				_sheet.reset_affordability()
+				_journal.visible = false)
 	_rewards.setup(_ui, state, settings, sfx, _table, get_viewport(), _show_toast, _refresh,
 			func() -> void:
 				if _journal.visible:
@@ -171,7 +181,7 @@ func _process(delta: float) -> void:
 	_perf.update(delta)
 	_update_depth(delta)
 	_update_abilities(delta)
-	_update_autobuy(delta)
+	_sheet.update_autobuy(delta)
 	_update_prestige_button()
 	if _message_time > 0.0:
 		_message_time -= delta
@@ -203,14 +213,7 @@ func _update_counter(delta: float) -> void:
 	_coins_label.pivot_offset = Vector2(0.0, _coins_label.size.y * 0.5)
 	_coins_label.scale = Vector2(zoom, zoom)
 	_fx.target = _coin_icon.global_position + _coin_icon.size * 0.5
-	var mask := 0
-	for i in ClickerState.ORDER.size():
-		var count := _buy_count(ClickerState.ORDER[i])
-		if state.coins >= state.cost_for(ClickerState.ORDER[i], count):
-			mask |= 1 << i
-		mask = hash([mask, count])
-	if mask != _afford_mask:
-		_afford_mask = mask
+	if _sheet.poll_affordable():
 		_refresh()
 
 
@@ -252,50 +255,6 @@ func _update_prestige_button() -> void:
 	UiTheme.style_key(_prestige_button, "brass" if recommended else "dark")
 
 
-func _on_prestige_pressed() -> void:
-	var pending := state.pending_veins()
-	if pending < 1:
-		return
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("Новая шахта", 54, UiTheme.TEXT, true))
-	var after := 1.0 + state.vein_step() * (state.veins + pending)
-	var gain_text := UiTheme.make_label(Tr.fmt("Вы получите %d жил: доход ×%.1f → ×%.1f", [pending, state.vein_multiplier(), after]), 32, UiTheme.BRASS)
-	gain_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(gain_text)
-	var reset_text := UiTheme.make_label("Сбросятся монеты и улучшения. Останутся глубина, зона и жилы.", 28, UiTheme.MUTE)
-	reset_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(reset_text)
-	if not state.prestige_recommended():
-		var wait_text := UiTheme.make_label(Tr.fmt("Лучше подождать: стоит от +%d жил.", [maxi(ClickerState.PRESTIGE_GOOD_MIN, int(0.7 * state.veins))]), 26, UiTheme.MUTE)
-		wait_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		modal.body.add_child(wait_text)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	modal.body.add_child(row)
-	var cancel := UiTheme.make_button("Отмена", false, 32)
-	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cancel.pressed.connect(modal.close)
-	row.add_child(cancel)
-	var ok := UiTheme.make_button("Начать заново", true, 32)
-	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ok.pressed.connect(func() -> void:
-			var gained := state.prestige()
-			_table.clear_field()
-			_earned_batch = 0.0
-			_shown_coins = state.coins
-			state.save()
-			_show_toast(Tr.fmt("Новая шахта! +%d жил", [gained]) + "  ·  " + Tr.t("очков навыков: %d") % state.skill_points)
-			sfx.play("gong", -3.0)
-			settings.vibrate(60)
-			_table.celebrate()
-			_say_hint("after_prestige", "Жилы прибавили доход навсегда. Новые очки навыков тратятся в журнале («Навыки»). Зоны и коллекция остались при вас.")
-			_prestige_key = -1
-			_afford_mask = -1
-			modal.close())
-	row.add_child(ok)
-	_ui.add_child(modal)
-
-
 ## Обучение: семь коротких шагов; каждый подсвечивает нужный элемент. Можно пропустить; вернуть можно в настройках.
 func _build_tutorial() -> void:
 	_tutorial = Tutorial.new()
@@ -329,9 +288,7 @@ func _tut_rect_throw() -> Rect2:
 
 
 func _tut_rect_rain() -> Rect2:
-	if _upgrades_sheet.visible:
-		return (_rows["rain"]["button"] as Control).get_parent().get_global_rect()
-	return _upgrades_button.get_global_rect()
+	return _sheet.rain_rect()
 
 
 func _tut_rain_bought() -> bool:
@@ -397,7 +354,7 @@ func _on_biome_changed(index: int) -> void:
 	if index == Biomes.CORE and not state.ending_seen:
 		state.ending_seen = true
 		state.save()
-		_show_ending()
+		_progression.show_ending()
 
 
 ## Борк встречает на новой планете: название и её особенность (один раз для каждой планеты).
@@ -405,18 +362,6 @@ func _planet_arrival_line() -> void:
 	if not state.tutorial_done or not state.take_hint("planet_%d" % state.planet):
 		return
 	_hint_card.show_hint(Tr.t("Мы на планете: %s! Особенность: %s.") % [Tr.t(Biomes.planet_name(state.planet)), Tr.t(Biomes.planet_mod_text(state.planet))])
-
-
-func _show_ending() -> void:
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("Вы достигли Ядра", 54, UiTheme.TEXT, true))
-	var text := UiTheme.make_label(Tr.t("Глубина %d м. Глубже шахты нет: дальше только бесконечный спуск. Откройте журнал → «Планета»: «Новая планета» даст звёздную пыль и новые улучшения.") % Biomes.depth_m(state.total_earned, state.planet_scale()), 30, UiTheme.MUTE)
-	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(text)
-	var go_on := UiTheme.make_button("Продолжить", true, 34)
-	go_on.pressed.connect(modal.close)
-	modal.body.add_child(go_on)
-	_ui.add_child(modal)
 
 
 ## «Золотая лихорадка» и «Динамит»: таймеры, подписи, состояние клавиши.
@@ -491,56 +436,6 @@ func _apply_safe_area() -> void:
 	_ui.offset_bottom = -maxf(0.0, (window.y - safe.end.y) * k)
 
 
-func _on_planet_requested() -> void:
-	if not state.planet_ready():
-		return
-	var modal := Modal.new()
-	modal.body.add_child(UiTheme.make_label("Новая планета", 54, UiTheme.TEXT, true))
-	var next_name := Tr.t(Biomes.planet_name(state.planet + 1))
-	var gain_text := UiTheme.make_label(Tr.t("Вы полетите на планету: %s. Звёздной пыли: +%d") % [next_name, state.planet_gain()], 32, UiTheme.BRASS)
-	gain_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(gain_text)
-	var perk_text := UiTheme.make_label(Tr.t("Особенность планеты") + ": " + Tr.t(Biomes.planet_mod_text(state.planet + 1)), 26, UiTheme.TEXT)
-	perk_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(perk_text)
-	var reset_text := UiTheme.make_label("Сбросятся монеты, улучшения, жилы и глубина. Останутся навыки, коллекция, алмазы, достижения и мета-улучшения.", 28, UiTheme.MUTE)
-	reset_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	modal.body.add_child(reset_text)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
-	modal.body.add_child(row)
-	var cancel := UiTheme.make_button("Отмена", false, 32)
-	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cancel.pressed.connect(modal.close)
-	row.add_child(cancel)
-	var ok := UiTheme.make_button("Лететь", true, 32)
-	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ok.pressed.connect(func() -> void:
-			var gained := state.new_planet()
-			if gained <= 0:
-				return
-			_table.clear_field()
-			_earned_batch = 0.0
-			_shown_coins = 0.0
-			_biome = 0
-			_table.set_planet(state.planet)
-			_table.set_biome(0)
-			_table.celebrate()
-			music.play_zone(0)
-			_planet_arrival_line()
-			_dust.color = Color((Biomes.ACCENTS[0] as Color) * Biomes.planet_tint(state.planet), 0.32)
-			state.save()
-			_show_toast(Tr.t(Biomes.planet_name(state.planet)) + ": " + Tr.t("звёздной пыли +%d") % gained)
-			sfx.play("gong", -2.0)
-			settings.vibrate(80)
-			_prestige_key = -1
-			_afford_mask = -1
-			_journal.visible = false
-			modal.close())
-	row.add_child(ok)
-	_ui.add_child(modal)
-
-
 func _on_dynamite_pressed() -> void:
 	if _perf.stress_active:
 		return
@@ -564,10 +459,10 @@ func _build_ui() -> void:
 	for child in _ui.get_children():
 		child.queue_free()
 	_shown_text = ""
-	_afford_mask = -1
+	_sheet.reset_affordability()
 	_hint_hiding = false
 	_auto_button = null
-	_rows.clear()
+	_sheet.rows.clear()
 
 	var tap_area := Control.new()
 	tap_area.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -616,7 +511,7 @@ func _build_ui() -> void:
 	_journal.purchase.connect(_rewards.on_shop_purchase)
 	_journal.skill_purchase.connect(_rewards.on_skill_purchase)
 	_journal.meta_purchase.connect(_rewards.on_meta_purchase)
-	_journal.planet_requested.connect(_on_planet_requested)
+	_journal.planet_requested.connect(_progression.show_planet)
 	_journal.respec_requested.connect(_rewards.on_respec)
 	_journal.expedition_start.connect(_rewards.on_expedition_start)
 	_journal.expedition_claim.connect(_rewards.on_expedition_claim)
@@ -748,7 +643,7 @@ func _build_top() -> void:
 	_prestige_button = UiTheme.make_key("Новая шахта", 24, "dark")
 	_prestige_button.custom_minimum_size = Vector2(0, 60)
 	_prestige_button.visible = false
-	_prestige_button.pressed.connect(_on_prestige_pressed)
+	_prestige_button.pressed.connect(_progression.show_prestige)
 	depth_row.add_child(_prestige_button)
 	_prestige_key = -1
 
@@ -800,140 +695,10 @@ func _build_panel() -> void:
 
 	_upgrades_button = UiTheme.make_key("Улучшения", 40, "felt")
 	_upgrades_button.custom_minimum_size = Vector2(0, 110)
-	_upgrades_button.pressed.connect(_toggle_upgrades)
+	_upgrades_button.pressed.connect(_sheet.toggle)
 	column.add_child(_upgrades_button)
-	_build_upgrades_sheet()
-
-
-## Меню улучшений: выезжает над нижней панелью (панель с «Обвалом» остаётся доступной), закрывается той же кнопкой.
-func _build_upgrades_sheet() -> void:
-	_upgrades_sheet = PanelContainer.new()
-	_upgrades_sheet.anchor_left = 0.0
-	_upgrades_sheet.anchor_right = 1.0
-	_upgrades_sheet.anchor_top = 1.0
-	_upgrades_sheet.anchor_bottom = 1.0
-	_upgrades_sheet.offset_left = 0.0
-	_upgrades_sheet.offset_right = 0.0
-	_upgrades_sheet.offset_bottom = -PANEL_HEIGHT
-	_upgrades_sheet.offset_top = _upgrades_sheet.offset_bottom - 100.0
-	_upgrades_sheet.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	var style := StyleBoxFlat.new()
-	style.bg_color = UiTheme.BG
-	style.set_border_width_all(0)
-	style.border_width_top = 2
-	style.border_color = UiTheme.BRASS_DIM
-	style.corner_radius_top_left = 22
-	style.corner_radius_top_right = 22
-	style.content_margin_left = 24
-	style.content_margin_right = 24
-	style.content_margin_top = 18
-	style.content_margin_bottom = 16
-	_upgrades_sheet.add_theme_stylebox_override("panel", style)
-	_upgrades_sheet.visible = false
-	_sheet_open = false
-	_sheet_slide = 0.0
-	if _sheet_tween != null:
-		_sheet_tween.kill()
-	_upgrades_sheet.mouse_filter = Control.MOUSE_FILTER_STOP
-	_ui.add_child(_upgrades_sheet)
-	# лист рисуется под нижней панелью: при выезде он выходит из-за неё, а не наезжает сверху
-	_ui.move_child(_upgrades_sheet, _throw_row.get_parent().get_parent().get_index())
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
-	_upgrades_sheet.add_child(column)
-	column.add_child(_make_buy_modes())
-	_autobuy_button = UiTheme.make_key("", 24, "dark")
-	_autobuy_button.custom_minimum_size.y = 60
-	_autobuy_button.pressed.connect(func() -> void:
-			state.autobuy_on = not state.autobuy_on
-			state.save()
-			sfx.play("tick", -6.0)
-			_refresh())
-	column.add_child(_autobuy_button)
-	for key in ClickerState.ORDER:
-		column.add_child(_make_row(key))
-
-
-func _toggle_upgrades() -> void:
-	_sheet_open = not _sheet_open
-	_slide_sheet(_sheet_open)
-	sfx.play("tick", -6.0)
-	_afford_mask = -1
-	_refresh()
-
-
-## Меню улучшений выезжает снизу из-за нижней панели и уезжает обратно. Двигаем оба отступа сразу: высота листа не меняется.
-func _slide_sheet(open: bool) -> void:
-	if _sheet_tween != null:
-		_sheet_tween.kill()
-	var height := _upgrades_sheet.get_combined_minimum_size().y
-	_hint_card.set_lift(height if open else 0.0)      # подсказка Борка не прячется за открытым меню
-	var from := _sheet_slide if not open else height + 40.0
-	if open:
-		_upgrades_sheet.visible = true
-		_set_sheet_slide(from)
-	_sheet_tween = create_tween()
-	_sheet_tween.tween_method(_set_sheet_slide, from, 0.0 if open else height + 40.0, 0.28 if open else 0.2) 			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT if open else Tween.EASE_IN)
-	if not open:
-		_sheet_tween.tween_callback(func() -> void: _upgrades_sheet.visible = false)
-
-
-var _sheet_slide := 0.0
-
-
-## Сдвиг листа вниз от своего места на slide пикселей (0 — на месте).
-func _set_sheet_slide(slide: float) -> void:
-	_sheet_slide = slide
-	var height := _upgrades_sheet.get_combined_minimum_size().y
-	_upgrades_sheet.offset_bottom = -PANEL_HEIGHT + slide
-	_upgrades_sheet.offset_top = _upgrades_sheet.offset_bottom - height
-	_upgrades_sheet.modulate.a = clampf(1.0 - slide / (height + 40.0) * 0.8, 0.0, 1.0)
-
-
-## Автопокупка из мета-улучшения «Автоснабжение»: раз в несколько секунд берёт самое дешёвое улучшение.
-func _update_autobuy(delta: float) -> void:
-	var interval := state.autobuy_interval()
-	if interval <= 0.0 or not state.autobuy_on:
-		return
-	_autobuy_time += delta
-	if _autobuy_time < interval:
-		return
-	_autobuy_time = 0.0
-	if state.autobuy_step() != "":
-		sfx.play("tick", -12.0)
-		_refresh()
-
-
-## Сколько уровней купит нажатие в текущем режиме (в «Макс» — сколько хватает монет, но не меньше одного).
-func _buy_count(key: String) -> int:
-	var mode: int = Settings.BUY_MODES[settings.buy_mode]
-	return maxi(1, state.max_affordable(key)) if mode == 0 else mode
-
-
-## Ряд «×1 ×5 ×10 ×100 Макс» над улучшениями.
-func _make_buy_modes() -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	_mode_buttons.clear()
-	for i in Settings.BUY_MODES.size():
-		var mode: int = Settings.BUY_MODES[i]
-		var button := UiTheme.make_key("Макс" if mode == 0 else "×%d" % mode, 26, "brass" if i == settings.buy_mode else "dark")
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 64
-		button.pressed.connect(func() -> void: _set_buy_mode(i))
-		row.add_child(button)
-		_mode_buttons.append(button)
-	return row
-
-
-func _set_buy_mode(index: int) -> void:
-	settings.buy_mode = index
-	settings.save()
-	sfx.play("tick", -6.0)
-	for i in _mode_buttons.size():
-		UiTheme.style_key(_mode_buttons[i], "brass" if i == index else "dark")
-	_afford_mask = -1
-	_refresh()
+	_sheet.upgrades_button = _upgrades_button
+	_sheet.build(panel)
 
 
 ## Клавиша «Авто»: включена — глыбы падают сами (зелёная), выключена — тёмная.
@@ -954,113 +719,13 @@ func _make_auto_button() -> void:
 	_throw_row.move_child(_auto_button, 0)
 
 
-## Карточка улучшения: значок в рамке, название и уровень, что будет на следующем уровне, клавиша с ценой.
-func _make_row(key: String) -> PanelContainer:
-	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.SURFACE, UiTheme.LINE, 1, 18, 12))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
-	card.add_child(row)
-
-	var badge := PanelContainer.new()
-	badge.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.BG, UiTheme.LINE_STRONG, 1, 14, 10))
-	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	badge.add_child(Icon.new().setup(UPGRADE_ICONS[key], UiTheme.BRASS, 44))
-	row.add_child(badge)
-
-	var texts := VBoxContainer.new()
-	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	texts.alignment = BoxContainer.ALIGNMENT_CENTER
-	texts.add_theme_constant_override("separation", 0)
-	row.add_child(texts)
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 12)
-	texts.add_child(head)
-	var title := UiTheme.make_label(UPGRADE_NAMES[key], 32, UiTheme.TEXT)
-	head.add_child(title)
-	var pill := PanelContainer.new()
-	pill.add_theme_stylebox_override("panel", UiTheme.panel_style(Color(0, 0, 0, 0), UiTheme.BRASS_DIM, 1, 12, 3))
-	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var level_label := UiTheme.make_label("", 22, UiTheme.BRASS)
-	pill.add_child(level_label)
-	head.add_child(pill)
-	var effect := UiTheme.make_label("", 26, UiTheme.MUTE)
-	texts.add_child(effect)
-
-	var button := UiTheme.make_key("0", 34, "brass")
-	button.custom_minimum_size = Vector2(240, 84)
-	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	for style_name in ["normal", "hover", "focus", "pressed", "disabled"]:
-		(button.get_theme_stylebox(style_name) as StyleBoxFlat).content_margin_left = 66
-	var coin := Icon.new().setup("coin", UiTheme.DARK_ON_BRASS, 34)
-	coin.position = Vector2(24, 22)
-	button.add_child(coin)
-	button.pressed.connect(func() -> void:
-			if state.buy_n(key, _buy_count(key)) > 0:
-				state.save()
-				sfx.play("coin", -6.0)
-				settings.vibrate(20)
-				_refresh()
-				_pulse(button)
-				_tutorial.notify("buy_" + key))
-	row.add_child(button)
-	_rows[key] = {"level": level_label, "effect": effect, "button": button, "coin": coin}
-	return card
-
-
-## Короткий «щелчок» кнопки при покупке.
-func _pulse(button: Control) -> void:
-	button.pivot_offset = button.size * 0.5
-	var tween := create_tween()
-	tween.tween_property(button, "scale", Vector2(0.94, 0.94), 0.06)
-	tween.tween_property(button, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-
-
 func _refresh() -> void:
 	var rate_text := Tr.t("+%s в секунду") % NumberFormat.short(state.income_per_second())
 	if state.veins > 0:
 		rate_text += "  ·  " + Tr.t("Жилы %d (×%.1f)") % [state.veins, state.vein_multiplier()]
 	_rate_label.text = rate_text
 	_throw_button.text = Tr.t("Обвал") + " ×%d" % state.rocks_per_throw()
-	var ready_count := 0
-	for upgrade_key in ClickerState.ORDER:
-		if state.coins >= state.cost_for(upgrade_key, _buy_count(upgrade_key)):
-			ready_count += 1
-	if _sheet_open:
-		_upgrades_button.text = Tr.t("Закрыть")
-	else:
-		_upgrades_button.text = Tr.t("Улучшения") + ((" · %d" % ready_count) if ready_count > 0 else "")
-	UiTheme.style_key(_upgrades_button, "brass" if ready_count > 0 and not _sheet_open else "felt")
-	_autobuy_button.visible = state.autobuy_interval() > 0.0
-	_autobuy_button.text = Tr.t("Автопокупка: вкл") if state.autobuy_on else Tr.t("Автопокупка: выкл")
-	UiTheme.style_key(_autobuy_button, "felt" if state.autobuy_on else "dark")
-	for key in ClickerState.ORDER:
-		var row: Dictionary = _rows[key]
-		var count := _buy_count(key)
-		(row["level"] as Label).text = Tr.t("Ур. %d") % int(state.levels[key]) + (" +%d" % count if count > 1 else "")
-		(row["effect"] as Label).text = _effect_text(key, count)
-		var button: Button = row["button"]
-		var price := state.cost_for(key, count)
-		button.text = NumberFormat.short(price)
-		var affordable := state.coins >= price
-		button.disabled = not affordable
-		var coin: Icon = row["coin"]
-		coin.color = UiTheme.DARK_ON_BRASS if affordable else UiTheme.BRASS_DIM
-		coin.queue_redraw()
-
-
-## Текущий эффект и то, что даст следующий уровень.
-func _effect_text(key: String, count: int = 1) -> String:
-	var level: int = state.levels[key]
-	var next := level + count
-	match key:
-		"rain":
-			return Tr.t("%.1f → %.1f глыб в секунду") % [1.0 + 0.8 * level, 1.0 + 0.8 * next]
-		"tap":
-			return Tr.fmt("%d → %d глыб за обвал", [1 + level, 1 + next])
-		"faces":
-			return Tr.t("ценность руды 1–%d → 1–%d") % [6 + 2 * level, 6 + 2 * next]
-	return Tr.t("×%.2f → ×%.2f ко всему") % [pow(1.5, level), pow(1.5, next)]
+	_sheet.refresh()
 
 
 func _show_message(text: String) -> void:
@@ -1092,15 +757,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		KEY_SPACE:
 			_on_throw_pressed()
 		KEY_U:
-			_toggle_upgrades()
+			_sheet.toggle()
 		KEY_B:
-			_set_buy_mode((settings.buy_mode + 1) % Settings.BUY_MODES.size())
+			_sheet.set_buy_mode((settings.buy_mode + 1) % Settings.BUY_MODES.size())
 		KEY_A:
 			if _auto_button != null:
 				_auto_button.pressed.emit()
 		KEY_1, KEY_2, KEY_3, KEY_4:
 			var key: String = ClickerState.ORDER[key_event.keycode - KEY_1]
-			(_rows[key]["button"] as Button).pressed.emit()
+			(_sheet.rows[key]["button"] as Button).pressed.emit()
 
 
 func _on_tap_input(event: InputEvent) -> void:

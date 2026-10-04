@@ -29,10 +29,10 @@ func _process(delta: float) -> bool:
 	var plan := [
 		[2.9, func() -> void: _main._hint_card.show_hint("Находка! Руда копится в журнале: каждая веха коллекции даёт постоянный бонус к доходу.")],
 		[3.0, func() -> void: _shot("1_main")],
-		[3.1, func() -> void: _main._toggle_upgrades()],
+		[3.1, func() -> void: _main._sheet.toggle()],
 		[3.2, func() -> void: _shot("2_sheet_mid")],
 		[4.2, func() -> void: _shot("3_sheet_open")],
-		[4.3, func() -> void: _main._toggle_upgrades()],
+		[4.3, func() -> void: _main._sheet.toggle()],
 		[4.4, func() -> void: _shot("4_sheet_closing")],
 		[5.2, func() -> void:
 			_main.state.start_expedition(1)
@@ -60,12 +60,20 @@ func _process(delta: float) -> bool:
 		[11.2, func() -> void: _main._info.show_intro()],
 		[12.0, func() -> void: _shot("12_intro")],
 		[12.1, func() -> void:
+			_main.state.add_coins(1.0e40)
+			_main._progression.show_prestige()],
+		[12.7, func() -> void: _shot("15_prestige")],
+		[12.8, func() -> void: _main._progression.show_planet()],
+		[13.4, func() -> void: _shot("16_planet")],
+		[13.5, func() -> void: _main._progression.show_ending()],
+		[14.1, func() -> void: _shot("17_ending")],
+		[14.2, func() -> void:
 			_main.settings.show_fps = true
 			_main._perf.refresh_fps_visibility()
 			_main._perf.start_stress()],
-		[13.5, func() -> void: _shot("13_stress")],
-		[28.5, func() -> void: _shot("14_report")],
-		[28.6, func() -> void: quit()],
+		[15.0, func() -> void: _shot("13_stress")],
+		[30.0, func() -> void: _shot("14_report")],
+		[30.1, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()
