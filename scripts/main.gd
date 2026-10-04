@@ -56,6 +56,11 @@ var _perf := PerfMonitor.new()
 var _rewards := Rewards.new()
 var _progression := ProgressionDialogs.new()
 var _sheet := UpgradesSheet.new()
+var _last_tap_frame := -10
+var _mouse_finger := -1               # палец, который движок превращает в мышь (-1 — пока нет)
+var _last_button_frame := -10
+var _last_button: Button
+var _last_tap_pos := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -768,13 +773,73 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			(_sheet.rows[key]["button"] as Button).pressed.emit()
 
 
+## Касание стола мышью (на телефоне — эмуляция от первого пальца, приходит в gui_input).
 func _on_tap_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_table.tap(event.position)
-		_tutorial.notify("tap")
-		_fx.ripple(event.position)
-		settings.vibrate(8)
-		_hide_hint()
+		_register_tap(event.position)
+
+
+## Godot превращает в мышь только первый палец (пока он на экране): его касания идут через gui_input. Остальные пальцы
+## иначе пропали бы, поэтому по ним тут же роняются глыбы (касание стола) и нажимаются «Обвал» и «Динамит».
+func _input(event: InputEvent) -> void:
+	if not event is InputEventScreenTouch:
+		return
+	if not event.pressed:
+		if event.index == _mouse_finger:
+			_mouse_finger = -1
+		return
+	if _mouse_finger == -1:                 # так же выбирает палец для мыши сам движок
+		_mouse_finger = event.index
+		return
+	if _touch_over_table(event.position):
+		_register_tap(event.position)
+	elif _overlay_free():
+		_press_extra(event.position)
+
+
+## Нажатие кнопки вторым и следующими пальцами.
+func _press_extra(pos: Vector2) -> void:
+	for button in [_throw_button, _dynamite_button]:
+		if button != null and button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(pos):
+			var frame := Engine.get_process_frames()
+			if frame == _last_button_frame and button == _last_button:
+				return
+			_last_button_frame = frame
+			_last_button = button
+			button.button_down.emit()
+			button.pressed.emit()
+			button.button_up.emit()
+			return
+
+
+## Ничто не закрывает игровой экран: ни окно, ни журнал, ни настройки.
+func _overlay_free() -> bool:
+	if _journal.visible or _settings_screen.visible:
+		return false
+	for child in _ui.get_children():
+		if child is Modal:
+			return false
+	return true
+
+
+func _touch_over_table(pos: Vector2) -> bool:
+	if _table == null or _journal == null or not _table.screen_rect().has_point(pos) or not _overlay_free():
+		return false
+	return not (_sheet.sheet != null and _sheet.sheet.visible and _sheet.sheet.get_global_rect().has_point(pos))
+
+
+## Один тап: бросок, подсказки, рябь. Одно и то же касание, пришедшее и как палец, и как эмулированная мышь, считается один раз.
+func _register_tap(pos: Vector2) -> void:
+	var frame := Engine.get_process_frames()
+	if frame - _last_tap_frame <= 1 and pos.distance_to(_last_tap_pos) < 6.0:
+		return
+	_last_tap_frame = frame
+	_last_tap_pos = pos
+	_table.tap(pos)
+	_tutorial.notify("tap")
+	_fx.ripple(pos)
+	settings.vibrate(8)
+	_hide_hint()
 
 
 func _hide_hint() -> void:

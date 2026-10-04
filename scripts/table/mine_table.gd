@@ -12,6 +12,7 @@ signal boss_defeated(zone: int)
 signal boss_gone
 signal boss_hit
 signal golden_spawned
+signal tapped(screen_pos: Vector2)    # игрок коснулся стола (до разбора: глыба, золотая, хранитель)
 signal golden_hit
 signal golden_missed
 signal biome_changed(index: int)
@@ -307,6 +308,7 @@ func max_visual_rate() -> float:
 
 ## Касание экрана: глыбы падают вокруг точки стола под пальцем.
 func tap(screen_pos: Vector2) -> void:
+	tapped.emit(screen_pos)
 	if _golden != null:
 		var golden_screen := camera.unproject_position(_golden.node.global_position)
 		if golden_screen.distance_to(screen_pos) < 190.0:

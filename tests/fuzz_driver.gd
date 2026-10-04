@@ -24,10 +24,21 @@ func _initialize() -> void:
 
 
 func _buttons(node: Node, out: Array) -> void:
+	# как у настоящего игрока: пока открыто окно, нажимаются только его кнопки (остальное закрыто затемнением)
+	var top: Node = null
+	for modal in _main.find_children("*", "Modal", true, false):
+		if not modal.is_queued_for_deletion():
+			top = modal
+	if top != null and node == root:
+		node = top
+	_collect(node, out)
+
+
+func _collect(node: Node, out: Array) -> void:
 	if node is BaseButton and node.is_visible_in_tree() and not node.disabled:
 		out.append(node)
 	for child in node.get_children():
-		_buttons(child, out)
+		_collect(child, out)
 
 
 func _click(button: BaseButton) -> void:
@@ -52,7 +63,7 @@ func _process(_delta: float) -> bool:
 
 func _act() -> void:
 	var state: ClickerState = _main.state
-	match _rng.randi_range(0, 21):
+	match _rng.randi_range(0, 23):
 		0, 1, 2, 3, 4, 5, 6, 7:
 			var list: Array = []
 			_buttons(root, list)
@@ -101,6 +112,19 @@ func _act() -> void:
 			_main._table.summon_boss(_rng.randi_range(0, 6))
 		19:
 			_main._table.detonate()
+		22, 23:
+			# несколько пальцев: случайные касания и отпускания, в том числе по кнопкам, окнам и скольжение между ними
+			for i in _rng.randi_range(1, 6):
+				var touch := InputEventScreenTouch.new()
+				touch.index = _rng.randi_range(0, 4)
+				touch.position = Vector2(_rng.randf_range(0, 540), _rng.randf_range(0, 960))
+				touch.pressed = _rng.randf() < 0.6
+				Input.parse_input_event(touch)
+				if _rng.randf() < 0.3:
+					var drag := InputEventScreenDrag.new()
+					drag.index = touch.index
+					drag.position = touch.position + Vector2(_rng.randf_range(-80, 80), _rng.randf_range(-80, 80))
+					Input.parse_input_event(drag)
 		20, 21:
 			# прыжки системных часов: вперёд, назад, на годы; потом игра «просыпается» как после офлайна
 			var jumps := [60.0, 3600.0, 86400.0, -3600.0, -86400.0 * 3.0, 86400.0 * 365.0, -86400.0 * 365.0]
