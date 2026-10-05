@@ -34,6 +34,9 @@ func load_settings() -> void:
 	language = Tr.detect_system_language()
 	var config := ConfigFile.new()
 	if config.load(PATH) != OK:
+		# первый запуск: слабому телефону (4 ядра и меньше) сразу низкое качество, остальным среднее
+		if OS.has_feature("mobile") and OS.get_processor_count() <= 4:
+			quality = 0
 		return
 	var saved_language := str(config.get_value("main", "language", language))
 	if Tr.LANGUAGES.any(func(entry: Array) -> bool: return entry[0] == saved_language):
