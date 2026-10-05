@@ -84,6 +84,11 @@ static func class_color(cls: String) -> Color:
 	return ENEMY
 
 
+## Шкала отступов между элементами: плотный, обычный, просторный.
+const SPACE_S := 8
+const SPACE_M := 16
+const SPACE_L := 24
+
 ## Меньше этого текст на телефоне плохо читается (холст 1080 px ≈ 360 dp: 30 px ≈ 10 dp).
 const MIN_LABEL_SIZE := 30
 const MIN_KEY_SIZE := 26

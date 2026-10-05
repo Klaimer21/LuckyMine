@@ -128,7 +128,7 @@ func build(panel: Node) -> void:
 	# лист рисуется под нижней панелью: при выезде он выходит из-за неё, а не наезжает сверху
 	host.move_child(sheet, panel.get_index())
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", UiTheme.SPACE_S)
 	sheet.add_child(column)
 	column.add_child(_make_buy_modes())
 	autobuy_button = UiTheme.make_key("", 24, "dark")
@@ -242,7 +242,7 @@ func _make_row(key: String) -> PanelContainer:
 	texts.add_theme_constant_override("separation", 0)
 	row.add_child(texts)
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 12)
+	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	texts.add_child(head)
 	var title := UiTheme.make_label(UPGRADE_NAMES[key], 32, UiTheme.TEXT)
 	head.add_child(title)

@@ -35,7 +35,7 @@ func _ready() -> void:
 	_bubble.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_bubble)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 12)
+	column.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	_bubble.add_child(column)
 	_counter = UiTheme.make_label("", 22, UiTheme.MUTE)
 	column.add_child(_counter)
@@ -44,10 +44,10 @@ func _ready() -> void:
 	_text.custom_minimum_size.x = 560
 	column.add_child(_text)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	column.add_child(row)
 	var skip := UiTheme.make_key("Пропустить", 24, "dark")
-	skip.custom_minimum_size = Vector2(190, 72)
+	skip.custom_minimum_size = Vector2(210, 96)
 	skip.pressed.connect(_skip)
 	row.add_child(skip)
 	var spacer := Control.new()

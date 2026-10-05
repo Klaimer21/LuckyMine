@@ -47,7 +47,7 @@ func show_prestige() -> void:
 		wait_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		modal.body.add_child(wait_text)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	modal.body.add_child(row)
 	var cancel := UiTheme.make_button("Отмена", false, 32)
 	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -86,7 +86,7 @@ func show_planet() -> void:
 	reset_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	modal.body.add_child(reset_text)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	modal.body.add_child(row)
 	var cancel := UiTheme.make_button("Отмена", false, 32)
 	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL

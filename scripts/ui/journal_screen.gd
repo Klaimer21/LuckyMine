@@ -26,6 +26,7 @@ var _tab := 0                       # 0 — руда, 1 — навыки, 2 — 
 var _expedition_label: Label
 var _expedition_bar: ProgressBar
 var _was_ready := false
+var _fade_next := false             # следующая перерисовка — смена вкладки: короткое проявление
 var _tick := 0.0
 
 
@@ -43,7 +44,7 @@ func setup(p_state: ClickerState) -> void:
 	margin.add_child(scroll)
 	_content = VBoxContainer.new()
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_content.add_theme_constant_override("separation", 18)
+	_content.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	scroll.add_child(_content)
 	visible = false
 
@@ -59,6 +60,9 @@ func open() -> void:
 func rebuild() -> void:
 	for child in _content.get_children():
 		child.queue_free()
+	if _fade_next:
+		_fade_next = false
+		UiTheme.fade_in(_content, 0.14)
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 16)
 	_content.add_child(header)
@@ -88,6 +92,7 @@ func rebuild() -> void:
 		tab_button.custom_minimum_size = Vector2(0, 96)
 		tab_button.pressed.connect(func() -> void:
 				_tab = id
+				_fade_next = true
 				rebuild())
 		tabs.add_child(tab_button)
 	_expedition_label = null
@@ -114,7 +119,7 @@ func rebuild() -> void:
 ## Вкладка «Лавка»: алмазы, реклама за награду, покупки за алмазы, породы.
 func _build_shop() -> void:
 	var wallet := HBoxContainer.new()
-	wallet.add_theme_constant_override("separation", 14)
+	wallet.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	_content.add_child(wallet)
 	wallet.add_child(Icon.new().setup("gem", ORE_COLORS[4], 48))
 	wallet.add_child(UiTheme.make_label(str(state.diamonds), 56, UiTheme.TEXT, true))
@@ -197,7 +202,7 @@ func _build_expeditions() -> void:
 		var data: Dictionary = Retention.EXPEDITIONS[state.expedition_type]
 		var card := _card()
 		var column := VBoxContainer.new()
-		column.add_theme_constant_override("separation", 10)
+		column.add_theme_constant_override("separation", UiTheme.SPACE_S)
 		card.add_child(column)
 		column.add_child(UiTheme.make_label(data["name"], 38, UiTheme.TEXT, true))
 		if _was_ready:
@@ -309,7 +314,7 @@ func _build_achievements() -> void:
 ## Вкладка «Планета»: второй слой. Звёздная пыль, «Новая планета» (после ядра) и мета-улучшения за пыль.
 func _build_planet() -> void:
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 14)
+	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	_content.add_child(head)
 	head.add_child(Icon.new().setup("spark", Color(0.55, 0.86, 0.90), 48))
 	head.add_child(UiTheme.make_label(str(state.stardust), 56, UiTheme.TEXT, true))
@@ -326,7 +331,7 @@ func _build_planet() -> void:
 
 	var card := _card()
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", UiTheme.SPACE_S)
 	card.add_child(column)
 	column.add_child(UiTheme.make_label("Новая планета", 38, UiTheme.TEXT, true))
 	var can_fly := state.planet_ready()
@@ -364,7 +369,7 @@ func _meta_card(entry: Dictionary) -> void:
 	texts.add_theme_constant_override("separation", 2)
 	row.add_child(texts)
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 12)
+	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	texts.add_child(head)
 	var name_label := UiTheme.make_label(entry["name"], 32, UiTheme.TEXT)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -416,7 +421,7 @@ func _card() -> PanelContainer:
 ## Вкладка «Навыки»: очки, три ветки по четыре навыка, сброс за алмазы.
 func _build_skills() -> void:
 	var points := HBoxContainer.new()
-	points.add_theme_constant_override("separation", 14)
+	points.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	_content.add_child(points)
 	points.add_child(Icon.new().setup("star", UiTheme.BRASS, 48))
 	points.add_child(UiTheme.make_label(str(state.skill_points), 56, UiTheme.TEXT, true))
@@ -451,10 +456,10 @@ func _branch_card(branch: Dictionary) -> void:
 	card.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.SURFACE, UiTheme.LINE, 1, 18, 14))
 	_content.add_child(card)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", UiTheme.SPACE_S)
 	card.add_child(column)
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 14)
+	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	column.add_child(head)
 	head.add_child(Icon.new().setup(branch["icon"], UiTheme.BRASS, 44))
 	var name_label := UiTheme.make_label(branch["name"], 38, UiTheme.TEXT, true)
@@ -465,7 +470,7 @@ func _branch_card(branch: Dictionary) -> void:
 	for i in nodes.size():
 		column.add_child(UiTheme.hairline())
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 14)
+		row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 		column.add_child(row)
 		var texts := VBoxContainer.new()
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -579,7 +584,7 @@ func _ore_card(ore: int) -> void:
 	texts.add_theme_constant_override("separation", 4)
 	row.add_child(texts)
 	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 12)
+	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	texts.add_child(head)
 	var name_label := UiTheme.make_label(ORE_NAMES[ore], 32, UiTheme.TEXT)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

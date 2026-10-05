@@ -3,6 +3,7 @@ extends Node
 ## Глыбы падают сами, по кнопке «Обвал» и по касанию стола; каждая, разбиваясь, приносит монеты.
 
 const SAVE_EVERY := 5.0
+const TOAST_TOP := 400                  # тост над столом; при появлении въезжает снизу на 28 px
 const PANEL_HEIGHT := 350               # нижняя панель: «Обвал», «Авто», «Динамит» и кнопка «Улучшения»
 
 var state := ClickerState.new()
@@ -248,6 +249,8 @@ func _update_depth(delta: float) -> void:
 	if _toast_time > 0.0:
 		_toast_time -= delta
 		_toast.modulate.a = clampf(minf(_toast_time, 3.0 - _toast_time) * 2.5, 0.0, 1.0)
+		var enter := 1.0 - pow(1.0 - clampf((3.0 - _toast_time) / 0.3, 0.0, 1.0), 3.0)      # плавное замедление к концу въезда
+		_toast.offset_top = TOAST_TOP + (1.0 - enter) * 28.0
 
 
 ## Кнопка «Новая шахта»: видна, когда прибавится хотя бы одна жила; латунная, когда сброс выгоден.
@@ -511,7 +514,7 @@ func _build_ui() -> void:
 	_perf.build()
 	_toast = UiTheme.make_label("", 52, UiTheme.TEXT, true)
 	_toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_toast.offset_top = 420
+	_toast.offset_top = TOAST_TOP
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.modulate.a = 0.0
 	_ui.add_child(_toast)
@@ -623,7 +626,7 @@ func _build_top() -> void:
 	margin.add_child(column)
 
 	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 18)
+	top.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(top)
 	_coin_icon = Icon.new().setup("coin", UiTheme.BRASS, 72)
@@ -706,12 +709,12 @@ func _build_panel() -> void:
 	panel.add_theme_stylebox_override("panel", style)
 	_ui.add_child(panel)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", UiTheme.SPACE_S)
 	panel.add_child(column)
 
 	# бросок: «Авто» и большая клавиша
 	_throw_row = HBoxContainer.new()
-	_throw_row.add_theme_constant_override("separation", 14)
+	_throw_row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	column.add_child(_throw_row)
 	_make_auto_button()
 	_throw_button = UiTheme.make_key("Обвал", 62, "brass")

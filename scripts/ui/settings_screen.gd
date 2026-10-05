@@ -36,7 +36,7 @@ func setup(p_settings: Settings, p_table: MineTable, p_state: ClickerState = nul
 	margin.add_child(scroll)
 	_content = VBoxContainer.new()
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_content.add_theme_constant_override("separation", 20)
+	_content.add_theme_constant_override("separation", UiTheme.SPACE_L)
 	scroll.add_child(_content)
 	visible = false
 	rebuild()
@@ -197,7 +197,7 @@ func _add_section(title: String) -> void:
 ## Строка с ползунком 0…1.
 func _add_slider(title: String, value: float, on_change: Callable) -> void:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 20)
+	row.add_theme_constant_override("separation", UiTheme.SPACE_L)
 	_content.add_child(row)
 	var label := UiTheme.make_label(title, 30, UiTheme.TEXT)
 	label.custom_minimum_size.x = 380
@@ -232,7 +232,7 @@ func _add_choice(title: String, options: Array, current: int, translate: bool, o
 		row.add_theme_constant_override("v_separation", 10)
 	else:
 		row = HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
+		row.add_theme_constant_override("separation", UiTheme.SPACE_S)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_child(row)
 	for i in options.size():

@@ -35,7 +35,7 @@ func _init() -> void:
 	center.add_child(panel)
 
 	body = VBoxContainer.new()
-	body.add_theme_constant_override("separation", 22)
+	body.add_theme_constant_override("separation", UiTheme.SPACE_L)
 	panel.add_child(body)
 
 

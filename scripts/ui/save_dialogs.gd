@@ -52,7 +52,7 @@ func _confirm(title: String, text: String, ok_text: String, on_ok: Callable) -> 
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	modal.body.add_child(note)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	modal.body.add_child(row)
 	var cancel := UiTheme.make_button("Отмена", false, 32)
 	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL

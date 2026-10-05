@@ -86,6 +86,13 @@ func _screens(language: String) -> void:
 				_main.state.hints_seen[id] = true
 			_main._info.show_help(),
 	}
+	_main.state.tutorial_done = false
+	_main._tutorial.start()
+	await _wait(0.5)
+	await _check(language, "обучение, шаг 1")
+	_main._tutorial._skip()
+	await _wait(0.3)
+	_main.state.tutorial_done = true
 	for name in dialogs:
 		(dialogs[name] as Callable).call()
 		await _wait(0.4)
@@ -101,6 +108,8 @@ func _check(language: String, screen: String) -> void:
 		scope = _main._journal
 	elif scope == null and _main._settings_screen.visible:
 		scope = _main._settings_screen
+	elif scope == null and _main._tutorial.visible:
+		scope = _main._tutorial
 	elif scope == null:
 		scope = _main._ui
 	_lint(scope, language, screen, scope == _main._ui)
