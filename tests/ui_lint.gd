@@ -59,7 +59,7 @@ func _screens(language: String) -> void:
 	await _wait(0.5)
 
 	state.start_expedition(1)
-	for tab in 5:
+	for tab in 6:
 		_main._journal._tab = tab
 		_main._journal.open()
 		await _wait(0.4)

@@ -43,6 +43,10 @@ func _process(delta: float) -> bool:
 			_main._journal._tab = 0
 			_main._journal.rebuild()],
 		[6.6, func() -> void: _shot("6_journal_ore")],
+		[6.61, func() -> void:
+			_main._journal._tab = 5
+			_main._journal.rebuild()],
+		[6.615, func() -> void: _shot("6a_journal_shop")],
 		[6.62, func() -> void:
 			_main._journal._tab = 1
 			_main._journal.rebuild()],

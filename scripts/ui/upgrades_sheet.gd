@@ -205,7 +205,7 @@ func _make_buy_modes() -> HBoxContainer:
 		var mode: int = Settings.BUY_MODES[i]
 		var button := UiTheme.make_key("Макс" if mode == 0 else "×%d" % mode, 26, "brass" if i == _settings.buy_mode else "dark")
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 76
+		button.custom_minimum_size.y = 88
 		button.pressed.connect(func() -> void: set_buy_mode(i))
 		row.add_child(button)
 		_mode_buttons.append(button)

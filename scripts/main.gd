@@ -356,7 +356,7 @@ func _on_biome_changed(index: int) -> void:
 		3:
 			_say_hint("zone_3", "Золотые залежи! Руда богаче, а хранители крепче: держите динамит под рукой.")
 		4:
-			_say_hint("zone_4", "Кристальная пещера. Алмазов здесь больше всего: тратьте их в журнале («Руда»).")
+			_say_hint("zone_4", "Кристальная пещера. Алмазов здесь больше всего: тратьте их в журнале («Лавка»).")
 		5:
 			_say_hint("zone_5", "Магма: жарко! Дальше только Ядро. Загляните в журнал: пора думать о «Новой шахте».")
 	settings.vibrate(40)
@@ -415,7 +415,7 @@ func _on_ore_collected(ore: int) -> void:
 	if ore == 3:
 		_say_hint("first_gold", "Золото запускает «Золотой запал»: ×2 к доходу на несколько секунд, потом пауза.")
 	if ore == 4:
-		_say_hint("first_diamond", "Алмаз! Это вторая валюта: в журнале («Руда») за неё можно купить «Золотую лихорадку» и динамит.")
+		_say_hint("first_diamond", "Алмаз! Это вторая валюта: в журнале («Лавка») за неё можно купить «Золотую лихорадку» и динамит.")
 
 
 ## Короткая «заморозка» кадра на редкой находке: вес событию. Время возвращается по таймеру реального времени.
@@ -616,17 +616,17 @@ func _build_top() -> void:
 	_coins_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_coins_label)
 	_journal_button = UiTheme.make_button("0", false, 28)
-	_journal_button.custom_minimum_size = Vector2(150, 76)
+	_journal_button.custom_minimum_size = Vector2(170, 96)
 	_journal_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_journal_button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var journal_icon := Icon.new().setup("journal", UiTheme.MUTE, 34)
-	journal_icon.position = Vector2(12, 15)
+	journal_icon.position = Vector2(16, 31)
 	_journal_button.add_child(journal_icon)
 	_journal_button.pressed.connect(func() -> void:
 			_journal.open()
 			_say_hint("journal_first", "Походы идут по реальному времени, даже пока игра закрыта: отправьте шахтёров и возвращайтесь за добычей."))
 	top.add_child(_journal_button)
-	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 36, Vector2(76, 76))
+	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 40, Vector2(96, 96))
 	gear.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	gear.pressed.connect(func() -> void: _settings_screen.open())
 	top.add_child(gear)
@@ -660,7 +660,7 @@ func _build_top() -> void:
 	depth_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	depth_row.add_child(depth_spacer)
 	_prestige_button = UiTheme.make_key("Новая шахта", 24, "dark")
-	_prestige_button.custom_minimum_size = Vector2(0, 72)
+	_prestige_button.custom_minimum_size = Vector2(0, 84)
 	_prestige_button.visible = false
 	_prestige_button.pressed.connect(_progression.show_prestige)
 	depth_row.add_child(_prestige_button)

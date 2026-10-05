@@ -1,6 +1,6 @@
 class_name JournalScreen
 extends Control
-## Журнал: вкладка «Руда» (алмазы, лавка за них, коллекция четырёх руд с вехами, бонус за полный набор)
+## Журнал: вкладки «Руда» (коллекция четырёх руд с вехами, бонус за полный набор) и «Лавка» (алмазы, покупки за них)
 ## и вкладка «Навыки» (дерево из трёх веток, очки даёт «Новая шахта»).
 
 signal back_pressed
@@ -72,19 +72,22 @@ func rebuild() -> void:
 	header.add_child(title)
 
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 12)
+	tabs.add_theme_constant_override("separation", 8)
 	_content.add_child(tabs)
-	var tab_names := ["Руда", "Навыки", "Походы", "Награды", "Планета"]
-	for i in tab_names.size():
-		var tab_button := UiTheme.make_key(tab_names[i], 24, "felt" if i == _tab else "dark")
-		if i != _tab:
+	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка
+	var tab_list := [[0, "Руда"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [3, "Награды"], [4, "Планета"]]
+	for entry in tab_list:
+		var id: int = entry[0]
+		var tab_button := UiTheme.make_key(str(entry[1]), 26, "felt" if id == _tab else "dark")
+		if id != _tab:
 			# неактивные вкладки светлее общего «приглушённого» цвета: иначе подписи плохо читаются на телефоне
 			for color_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 				tab_button.add_theme_color_override(color_name, UiTheme.TEXT.darkened(0.25))
 		tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tab_button.custom_minimum_size.y = 80
+		tab_button.clip_text = true
+		tab_button.custom_minimum_size = Vector2(0, 96)
 		tab_button.pressed.connect(func() -> void:
-				_tab = i
+				_tab = id
 				rebuild())
 		tabs.add_child(tab_button)
 	_expedition_label = null
@@ -102,7 +105,14 @@ func rebuild() -> void:
 		_build_planet()
 		return
 
-	# алмазы и лавка
+	if _tab == 5:
+		_build_shop()
+	else:
+		_build_ore()
+
+
+## Вкладка «Лавка»: алмазы, реклама за награду, покупки за алмазы, породы.
+func _build_shop() -> void:
 	var wallet := HBoxContainer.new()
 	wallet.add_theme_constant_override("separation", 14)
 	_content.add_child(wallet)
@@ -130,7 +140,10 @@ func rebuild() -> void:
 	for style_index in ClickerState.STYLE_PRICES:
 		_shop_card("style_%d" % style_index, Settings.STYLE_NAMES[style_index], "новый цвет камней")
 
-	_section("Коллекция")
+
+## Вкладка «Руда»: коллекция четырёх руд с вехами и бонус за полный набор.
+func _build_ore() -> void:
+	_content.add_child(UiTheme.make_text("Каждая находка копится в коллекции: за вехи руда даёт постоянный бонус к доходу.", 28, UiTheme.MUTE))
 	for ore in ClickerState.ORES:
 		_ore_card(ore)
 	var full := state.full_set_level()
@@ -261,6 +274,8 @@ func _build_achievements() -> void:
 		var done := state.achievement_done(achievement)
 		var claimed := state.achievement_claimed(achievement)
 		var card := _card()
+		if done and not claimed:
+			card.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.FELT, UiTheme.BRASS, 2, 18, 14))     # можно забрать: рамка латунью
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 16)
 		card.add_child(row)
@@ -275,12 +290,12 @@ func _build_achievements() -> void:
 		texts.add_child(UiTheme.make_label(_reward_text(achievement["reward"]), 24, UiTheme.BRASS))
 		if not done:
 			var goal := float(achievement["goal"])
-			texts.add_child(UiTheme.make_bar(state.achievement_value(achievement) / goal, UiTheme.BRASS_DIM, 8))
+			texts.add_child(UiTheme.make_bar(state.achievement_value(achievement) / goal, UiTheme.BRASS, 12))
 		if claimed:
 			row.add_child(Icon.new().setup("check", UiTheme.BRASS, 40))
 		elif done:
 			var claim := UiTheme.make_key("Забрать", 26, "brass")
-			claim.custom_minimum_size = Vector2(170, 76)
+			claim.custom_minimum_size = Vector2(190, 88)
 			claim.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			var id: String = achievement["id"]
 			claim.pressed.connect(func() -> void:
@@ -303,6 +318,8 @@ func _build_planet() -> void:
 	planet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	head.add_child(planet_label)
 
+	if state.stardust == 0 and state.planet == 0:
+		_content.add_child(UiTheme.make_text("Звёздную пыль даёт «Новая планета»: после Ядра. На неё покупаются мета-улучшения.", 28, UiTheme.MUTE))
 	var feature := UiTheme.make_label(Tr.t("Особенность планеты") + ": " + Tr.t(Biomes.planet_mod_text(state.planet)), 24, UiTheme.BRASS)
 	feature.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(feature)
@@ -352,7 +369,7 @@ func _meta_card(entry: Dictionary) -> void:
 	var name_label := UiTheme.make_label(entry["name"], 32, UiTheme.TEXT)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(name_label)
-	head.add_child(UiTheme.pip_row(level, costs.size(), 14))
+	head.add_child(UiTheme.pip_row(level, costs.size(), 18))
 	var detail := UiTheme.make_text(entry["text"], 24, UiTheme.MUTE)
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	texts.add_child(detail)
@@ -443,7 +460,7 @@ func _branch_card(branch: Dictionary) -> void:
 	var name_label := UiTheme.make_label(branch["name"], 38, UiTheme.TEXT, true)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(name_label)
-	head.add_child(UiTheme.pip_row(level, Skills.MAX_LEVEL, 14))
+	head.add_child(UiTheme.pip_row(level, Skills.MAX_LEVEL, 18))
 	var nodes: Array = branch["nodes"]
 	for i in nodes.size():
 		column.add_child(UiTheme.hairline())
@@ -567,7 +584,7 @@ func _ore_card(ore: int) -> void:
 	var name_label := UiTheme.make_label(ORE_NAMES[ore], 32, UiTheme.TEXT)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(name_label)
-	head.add_child(UiTheme.pip_row(level, ClickerState.MILESTONES.size(), 14))
+	head.add_child(UiTheme.pip_row(level, ClickerState.MILESTONES.size(), 18))
 	var next_need := 0
 	var previous := 0
 	for need in ClickerState.MILESTONES:

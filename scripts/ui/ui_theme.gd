@@ -294,6 +294,7 @@ static func pip_row(filled: int, total := 5, px := 14) -> HBoxContainer:
 	for i in total:
 		var dot := Panel.new()
 		dot.custom_minimum_size = Vector2(px, px)
+		dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER      # иначе точка растягивалась бы вровень со строкой
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var style := StyleBoxFlat.new()
 		style.set_corner_radius_all(px)
@@ -301,8 +302,8 @@ static func pip_row(filled: int, total := 5, px := 14) -> HBoxContainer:
 			style.bg_color = BRASS
 		else:
 			style.bg_color = Color(0, 0, 0, 0)
-			style.set_border_width_all(1)
-			style.border_color = Color(0.365, 0.435, 0.384)
+			style.set_border_width_all(2)
+			style.border_color = Color(0.55, 0.62, 0.56)
 		dot.add_theme_stylebox_override("panel", style)
 		row.add_child(dot)
 	return row
