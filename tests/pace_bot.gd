@@ -2,7 +2,7 @@ extends SceneTree
 ## «Бот-новичок» измеряет темп первых минут: когда первая покупка, находка, золото, алмаз, зона, золотая глыба, «Новая шахта».
 ## Бот играет как аккуратный новичок: тапает по столу раз в полсекунды, ловит золотую глыбу через 2 секунды после появления,
 ## покупает самое дешёвое доступное улучшение. Время ускорено; считаются игровые секунды.
-## Запуск: godot --headless --path . --script res://tests/pace_bot.gd -- <игровых секунд, по умолчанию 900> [passive]
+## Запуск: godot --headless --path . --script res://tests/pace_bot.gd -- <игровых секунд, по умолчанию 900> [passive|nomachines]
 ## Игра пишет сохранение: запускать на копии профиля, начинает с нового прогресса (см. docs/ROADMAP.md, ориентиры).
 
 var _main: Node
@@ -17,12 +17,16 @@ var _snapshots := [30.0, 60.0, 180.0, 300.0, 600.0, 900.0]
 var _snap_done := {}
 var _last_biome := 0
 var _passive := false
+var _use_machines := true
+var _machine_buys := 0
 
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		_duration = float(args[0])
+	if args.size() > 1 and args[1] == "nomachines":
+		_use_machines = false
 	if args.size() > 1 and args[1] == "passive":
 		_passive = true                  # игрок почти не касается экрана: растёт только «Камнепад»
 	_main = load("res://scenes/main.tscn").instantiate()
@@ -71,7 +75,15 @@ func _process(delta: float) -> bool:
 	# покупки: самое дешёвое доступное
 	if _t >= _next_buy:
 		_next_buy = _t + 0.25
-		var bought := state.autobuy_step()
+		var bought := ""
+		# машины: покупаем уровень, как только хватает монет (игрок видит золотую рамку ячейки)
+		if _use_machines and state.machine_unlocked("crusher") and state.machine_cost("crusher", 1) <= state.coins and state.machine_level("crusher") < state.machine_max_level("crusher"):
+			state.buy_machine("crusher", 1)
+			bought = "crusher"
+			_mark("первая покупка Дробилки")
+			_machine_buys += 1
+		else:
+			bought = state.autobuy_step()
 		if bought != "":
 			_purchases.append(_t)
 			_mark("первая покупка")
@@ -90,7 +102,7 @@ func _process(delta: float) -> bool:
 	for snap in _snapshots:
 		if _t >= snap and not _snap_done.has(snap):
 			_snap_done[snap] = true
-			print("PACE %4ds: монеты %s, доход %s/с, покупок %d, уровни %s, алмазов %d" % [int(snap), NumberFormat.short(state.coins),
+			print("PACE %4ds: заработано %s, монеты %s, доход %s/с, покупок %d, уровни %s, алмазов %d" % [int(snap), NumberFormat.short(state.total_earned), NumberFormat.short(state.coins),
 					NumberFormat.short(state.income_per_second()), _purchases.size(), state.levels, state.diamonds])
 	if _t >= _duration:
 		_finish()
@@ -112,5 +124,6 @@ func _finish() -> void:
 			max_gap = t - previous
 			gap_at = previous
 		previous = t
+	print("PACE покупок Дробилки: %d, уровень %d" % [_machine_buys, _main.state.machine_level("crusher")])
 	print("PACE покупок за забег: %d; самая долгая пауза между покупками: %.1f c (с %.0f-й секунды)" % [_purchases.size(), max_gap, gap_at])
 	quit()

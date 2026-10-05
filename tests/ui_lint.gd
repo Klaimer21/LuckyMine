@@ -81,6 +81,7 @@ func _screens(language: String) -> void:
 		"сброс прогресса": func() -> void: _main._save_dialogs.reset_progress(),
 		"импорт кода": func() -> void: _main._save_dialogs.import_code(),
 		"новая шахта": func() -> void: _main._progression.show_prestige(),
+		"карточка машины": func() -> void: _main._machines._open_card("crusher"),
 		"помощь": func() -> void:
 			for id in ["first_ore", "first_gold", "first_diamond", "zone_2", "first_boss"]:
 				_main.state.hints_seen[id] = true

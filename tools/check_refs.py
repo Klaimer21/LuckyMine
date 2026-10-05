@@ -14,7 +14,7 @@ FILES = sorted(glob.glob(os.path.join(ROOT, "scripts", "**", "*.gd"), recursive=
 
 # имена, которые есть у любых узлов/объектов движка: их у своих классов не ищем
 ENGINE = set("""add_child remove_child queue_free get_children get_child get_parent get_tree get_viewport get_node connect disconnect emit
-is_inside_tree is_queued_for_deletion create_tween create_timer add_theme_color_override add_theme_constant_override add_theme_font_size_override
+is_inside_tree is_instance_valid is_queued_for_deletion create_tween create_timer add_theme_color_override add_theme_constant_override add_theme_font_size_override
 add_theme_font_override add_theme_stylebox_override get_theme_stylebox set_anchors_and_offsets_preset move_child
 get_global_rect get_rect get_combined_minimum_size queue_redraw grab_focus visible modulate scale size position pivot_offset
 custom_minimum_size text disabled pressed button_down button_up resized gui_input mouse_filter global_position rotation

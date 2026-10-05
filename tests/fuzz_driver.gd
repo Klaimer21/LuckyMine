@@ -63,7 +63,7 @@ func _process(_delta: float) -> bool:
 
 func _act() -> void:
 	var state: ClickerState = _main.state
-	match _rng.randi_range(0, 23):
+	match _rng.randi_range(0, 25):
 		0, 1, 2, 3, 4, 5, 6, 7:
 			var list: Array = []
 			_buttons(root, list)
@@ -112,6 +112,12 @@ func _act() -> void:
 			_main._table.summon_boss(_rng.randi_range(0, 6))
 		19:
 			_main._table.detonate()
+		24, 25:
+			state.levels["rain"] = maxi(int(state.levels["rain"]), _rng.randi_range(0, 8))
+			state.update_machine_unlocks()
+			state.coins += 10.0 ** _rng.randf_range(2.0, 12.0)
+			state.buy_machine("crusher", _rng.randi_range(1, 30))
+			_main._refresh()
 		22, 23:
 			# несколько пальцев: случайные касания и отпускания, в том числе по кнопкам, окнам и скольжение между ними
 			for i in _rng.randi_range(1, 6):
@@ -163,6 +169,11 @@ func _check() -> void:
 	for placement in Ads.PLACEMENTS:
 		if s.ad_remaining(placement) > float(Ads.PLACEMENTS[placement]["cooldown"]) + 1.0 and abs(ClickerState.clock_offset) < 86400.0:
 			_bug("ad cooldown %s longer than configured: %s" % [placement, s.ad_remaining(placement)])
+	var crusher := s.machine_level("crusher")
+	if crusher < 0 or crusher > s.machine_max_level("crusher"):
+		_bug("crusher level out of range: %d" % crusher)
+	if crusher > 0 and not s.machine_unlocked("crusher"):
+		_bug("crusher level without unlock")
 	var modals := 0
 	for node in _main.find_children("*", "Modal", true, false):
 		if not node.is_queued_for_deletion():

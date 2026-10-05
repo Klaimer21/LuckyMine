@@ -69,6 +69,8 @@ var ending_seen := false
 var veins := 0                     # жилы: постоянный множитель дохода
 var prestiges := 0
 var levels := {"rain": 0, "tap": 0, "faces": 0, "mult": 0}
+var machines := {"crusher": 0}        # уровни машин (сбрасываются с «Новой шахтой»)
+var machines_unlocked := {}            # id -> true: открытые машины (остаются навсегда)
 var last_seen := 0.0
 var auto_throw := true
 var autobuy_on := true               # включатель автопокупки (работает, если куплено мета-улучшение)
@@ -112,6 +114,17 @@ func rain_rate() -> float:
 	return (1.0 + 0.8 * levels["rain"]) * (1.0 + float(DRILL_BONUS[skill_level("drill")]))
 
 
+## Глыбы в секунду от Дробилки: доля потока «Камнепада» за каждый уровень машины (и навык «Бур» действует на оба потока).
+func crusher_rate() -> float:
+	var info: Dictionary = Machines.data("crusher")
+	return float(info["step"]) * machine_level("crusher") * (1.0 + 0.8 * levels["rain"]) * (1.0 + float(DRILL_BONUS[skill_level("drill")]))
+
+
+## Все глыбы в секунду: «Камнепад» плюс машины.
+func total_rock_rate() -> float:
+	return rain_rate() + crusher_rate()
+
+
 func rocks_per_throw() -> int:
 	return 1 + levels["tap"]
 
@@ -131,7 +144,7 @@ func average_value() -> float:
 
 
 func income_per_second() -> float:
-	return rain_rate() * average_value()
+	return total_rock_rate() * average_value()
 
 
 func cost(key: String) -> float:
@@ -284,6 +297,63 @@ func start_mini(seconds: float) -> void:
 	if boost_time <= 0.0:
 		boost_factor = MINI_FACTOR
 		boost_time = seconds
+
+
+# ---------- Машины ----------
+
+func machine_level(id: String) -> int:
+	return int(machines.get(id, 0))
+
+
+func machine_unlocked(id: String) -> bool:
+	return machines_unlocked.has(id)
+
+
+## Открывает машины, условия которых выполнены; возвращает только что открытые (для сообщения игроку).
+func update_machine_unlocks() -> Array:
+	var opened: Array = []
+	for entry in Machines.LIST:
+		var id := str(entry["id"])
+		if not machines_unlocked.has(id) and int(levels["rain"]) >= int(entry["unlock_rain"]):
+			machines_unlocked[id] = true
+			opened.append(id)
+	return opened
+
+
+## Цена n следующих уровней машины (геометрическая прогрессия, масштаб планеты как у зон).
+func machine_cost(id: String, n: int) -> float:
+	var info: Dictionary = Machines.data(id)
+	var growth := float(info["growth"])
+	var level := machine_level(id)
+	return float(info["base_cost"]) * planet_scale() * pow(growth, level) * (pow(growth, n) - 1.0) / (growth - 1.0)
+
+
+func machine_max_level(id: String) -> int:
+	return int(Machines.data(id)["max_level"])
+
+
+## Сколько уровней подряд хватит монет купить (не больше предела машины).
+func machine_max_affordable(id: String) -> int:
+	var n := 0
+	var room := machine_max_level(id) - machine_level(id)
+	while n < room and machine_cost(id, n + 1) <= coins:
+		n += 1
+	return n
+
+
+## Покупает ровно n уровней (но не выше предела) или ничего; возвращает, сколько куплено.
+func buy_machine(id: String, n: int) -> int:
+	if not machine_unlocked(id) or n < 1:
+		return 0
+	n = mini(n, machine_max_level(id) - machine_level(id))
+	if n < 1:
+		return 0
+	var price := machine_cost(id, n)
+	if not (coins >= price):
+		return 0
+	coins -= price
+	machines[id] = machine_level(id) + n
+	return n
 
 
 # ---------- Достижения ----------
@@ -583,6 +653,8 @@ func new_planet() -> int:
 func _reset_run_levels() -> void:
 	for key in ORDER:
 		levels[key] = 0
+	for id in machines:
+		machines[id] = 0
 	levels["rain"] = start_bonus_levels()
 	levels["faces"] = start_bonus_levels()
 
@@ -743,7 +815,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -897,7 +969,15 @@ func _apply_save(data: Dictionary) -> float:
 	var saved_levels := _as_dict(data.get("levels"))
 	for key in ORDER:
 		levels[key] = _count(saved_levels.get(key), 0, 100000)
+	var saved_machines := _as_dict(data.get("machines"))
+	for id in Machines.ids():
+		machines[id] = _count(saved_machines.get(id), 0, int(Machines.data(id)["max_level"]))
+	machines_unlocked = {}
+	for id in _as_array(data.get("machines_unlocked")):
+		if Machines.ids().has(str(id)):
+			machines_unlocked[str(id)] = true
 	dynamite_zone_best = _count(data.get("dynamite_zone_best"), Biomes.index_for(total_earned, planet_scale()), 1000)
+	update_machine_unlocks()
 	var gone := maxf(0.0, now() - _num(data.get("last_seen"), 0.0))
 	var away := minf(gone, offline_cap_seconds())
 	offline_away = away

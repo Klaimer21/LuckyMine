@@ -3,7 +3,7 @@ extends Node
 ## Глыбы падают сами, по кнопке «Обвал» и по касанию стола; каждая, разбиваясь, приносит монеты.
 
 const SAVE_EVERY := 5.0
-const TOAST_TOP := 400                  # тост над столом; при появлении въезжает снизу на 28 px
+const TOAST_TOP := 560                  # тост у верхнего края стола (выше стоит полоса машин); при появлении въезжает снизу на 28 px
 const PANEL_HEIGHT := 350               # нижняя панель: «Обвал», «Авто», «Динамит» и кнопка «Улучшения»
 
 var state := ClickerState.new()
@@ -57,6 +57,7 @@ var _perf := PerfMonitor.new()
 var _rewards := Rewards.new()
 var _progression := ProgressionDialogs.new()
 var _sheet := UpgradesSheet.new()
+var _machines := MachineStrip.new()
 var _last_tap_frame := -10
 var _mouse_finger := -1               # палец, который движок превращает в мышь (-1 — пока нет)
 var _last_button_frame := -10
@@ -135,6 +136,7 @@ func _ready() -> void:
 	RenderingServer.set_default_clear_color(UiTheme.BG)       # поля при «keep» того же цвета, что и фон интерфейса
 	_apply_aspect()
 	_save_dialogs.setup(_ui, state, _show_toast)
+	_machines.setup(_ui, state, settings, sfx, _table, _refresh)
 	_sheet.setup(_ui, state, settings, sfx, PANEL_HEIGHT, _refresh, func(px: float) -> void: _hint_card.set_lift(px),
 			func(key: String) -> void: _tutorial.notify("buy_" + key))
 	_progression.setup(_ui, state, _table, sfx, music, settings, _show_toast,
@@ -192,6 +194,9 @@ func _process(delta: float) -> void:
 		_earned_batch = 0.0
 	_update_counter(delta)
 	_perf.update(delta)
+	_machines.update(delta)
+	for opened in state.update_machine_unlocks():
+		_on_machine_unlocked(str(opened))
 	_update_depth(delta)
 	_update_abilities(delta)
 	_sheet.update_autobuy(delta)
@@ -425,6 +430,14 @@ func _on_ore_collected(ore: int) -> void:
 
 
 ## Короткая «заморозка» кадра на редкой находке: вес событию. Время возвращается по таймеру реального времени.
+## Открылась машина: сообщение, подсказка, ячейка оживает.
+func _on_machine_unlocked(id: String) -> void:
+	_show_toast(Tr.t("Открыта машина: %s") % Tr.t(str(Machines.data(id)["name"])))
+	sfx.play("claim", -4.0)
+	_say_hint("first_machine")
+	_machines.refresh()
+
+
 func _hit_stop(seconds: float) -> void:
 	if settings.reduce_motion or _perf.stress_active or Engine.time_scale != 1.0:
 		return
@@ -510,6 +523,7 @@ func _build_ui() -> void:
 
 	_build_atmosphere()
 	_build_top()
+	_machines.build()
 
 	_perf.build()
 	_toast = UiTheme.make_label("", 52, UiTheme.TEXT, true)
@@ -772,6 +786,7 @@ func _refresh() -> void:
 	_rate_label.text = rate_text
 	_throw_button.text = Tr.t("Обвал") + " ×%d" % state.rocks_per_throw()
 	_sheet.refresh()
+	_machines.refresh()
 
 
 func _show_message(text: String) -> void:

@@ -107,6 +107,12 @@ func _draw() -> void:
 					[0.92, 0.78], [0.08, 0.78]]), color, width)
 			draw_polyline(_pts(s, [[0.36, 0.2], [0.44, 0.5], [0.62, 0.16]]), color, width)
 			draw_line(Vector2(s * 0.44, s * 0.5), Vector2(s * 0.5, s * 0.78), color, width)
+		"crusher":
+			draw_polyline(_pts(s, [[0.12, 0.18], [0.88, 0.18], [0.62, 0.58], [0.38, 0.58], [0.12, 0.18]]), color, width)
+			draw_rect(Rect2(s * 0.42, s * 0.58, s * 0.16, s * 0.16), color, false, width)
+			draw_rect(Rect2(s * 0.30, s * 0.82, s * 0.1, s * 0.1), color)
+			draw_rect(Rect2(s * 0.50, s * 0.86, s * 0.1, s * 0.1), color)
+			draw_rect(Rect2(s * 0.68, s * 0.80, s * 0.1, s * 0.1), color)
 		"dynamite":
 			draw_rect(Rect2(s * 0.3, s * 0.38, s * 0.4, s * 0.52), color, false, width)
 			draw_line(Vector2(s * 0.3, s * 0.56), Vector2(s * 0.7, s * 0.56), color, width)

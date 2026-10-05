@@ -22,6 +22,7 @@ func _init() -> void:
 	_test_collection()
 	_test_achievements()
 	_test_biomes()
+	_test_machines()
 	_test_hints()
 	_test_plurals()
 	_test_time()
@@ -251,6 +252,58 @@ func _test_biomes() -> void:
 	for planet in 8:
 		_check(Biomes.planet_name(planet) != "", "planet name %d" % planet)
 		_check(Biomes.planet_mod_text(planet) != "", "planet text %d" % planet)
+
+
+func _test_machines() -> void:
+	var state := ClickerState.new()
+	_check(state.update_machine_unlocks().is_empty() and not state.machine_unlocked("crusher"), "crusher locked at start")
+	state.levels["rain"] = 4
+	_check(state.update_machine_unlocks().is_empty(), "crusher still locked at rain level 4")
+	state.levels["rain"] = 5
+	_check(state.update_machine_unlocks() == ["crusher"] and state.machine_unlocked("crusher"), "crusher unlocks at rain level 5")
+	_check(state.update_machine_unlocks().is_empty(), "unlock is reported once")
+	# цены
+	var base := float(Machines.data("crusher")["base_cost"])
+	_check(is_equal_approx(state.machine_cost("crusher", 1), base), "first level costs the base price")
+	_check(is_equal_approx(state.machine_cost("crusher", 2), base * (1.0 + 1.5)), "two levels cost 1 + growth")
+	state.planet = 1
+	_check(is_equal_approx(state.machine_cost("crusher", 1), base * Biomes.PLANET_SCALE), "price scales with the planet")
+	state.planet = 0
+	# покупка
+	_check(state.buy_machine("crusher", 1) == 0 and state.machine_level("crusher") == 0, "cannot buy without coins")
+	state.coins = 1.0e12
+	var income_before := state.income_per_second()
+	_check(state.buy_machine("crusher", 3) == 3 and state.machine_level("crusher") == 3, "buy 3 levels")
+	_check(state.crusher_rate() > 0.0 and state.income_per_second() > income_before, "crusher adds income")
+	_check(state.buy_machine("crusher", 1000) == 17 and state.machine_level("crusher") == 20, "purchase stops at the max level")
+	_check(state.buy_machine("crusher", 1) == 0, "no purchase above the max level")
+	var fresh := ClickerState.new()
+	fresh.coins = 1.0e12
+	_check(fresh.buy_machine("crusher", 1) == 0, "cannot buy a locked machine")
+	fresh.coins = NAN
+	fresh.machines_unlocked["crusher"] = true
+	_check(fresh.buy_machine("crusher", 1) == 0, "NaN coins buy nothing")
+	# сохранение и сброс
+	var text := state.serialize()
+	var loaded := ClickerState.new()
+	loaded.load_from_text(text)
+	_check(loaded.machine_level("crusher") == 20 and loaded.machine_unlocked("crusher"), "machines persist")
+	var hostile := ClickerState.new()
+	hostile.load_from_text('{"machines": {"crusher": 99999}, "machines_unlocked": ["crusher", "nonsense", 5], "levels": {"rain": 7}}')
+	_check(hostile.machine_level("crusher") <= 20 and hostile.machines_unlocked.size() == 1, "hostile machine data clamped")
+	var old_save := ClickerState.new()
+	old_save.load_from_text('{"levels": {"rain": 9}}')
+	_check(old_save.machine_unlocked("crusher") and old_save.machine_level("crusher") == 0, "old saves unlock by rain level")
+	state.total_earned = 1.0e12
+	state.prestige()
+	_check(state.machine_level("crusher") == 0 and state.machine_unlocked("crusher"), "New Mine resets levels, keeps the unlock")
+	# офлайн-доход учитывает машину
+	var away := ClickerState.new()
+	away.levels["rain"] = 5
+	away.update_machine_unlocks()
+	var plain := away.income_per_second()
+	away.machines["crusher"] = 10
+	_check(away.income_per_second() > plain * 1.3, "income with the crusher is higher")
 
 
 func _test_hints() -> void:

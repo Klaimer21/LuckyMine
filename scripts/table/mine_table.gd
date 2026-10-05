@@ -148,6 +148,7 @@ var _gold_process: ParticleProcessMaterial
 var _rng := RandomNumberGenerator.new()
 var _carry := 0.0
 var _shake := 0.0
+var _crusher_carry := 0.0
 var _rock_materials: Array[StandardMaterial3D] = []
 var _stone_process: Array[ParticleProcessMaterial] = []
 var _gem_materials: Array[StandardMaterial3D] = []
@@ -291,6 +292,21 @@ func _rush_active() -> bool:
 
 
 ## Где стол на экране: прямоугольник по углам стола (для подсветки в обучении).
+## Где над столом стоит Дробилка (мировая координата x) и в какой точке экрана; z — дальний от игрока край стола.
+func crusher_world_x() -> float:
+	return -AREA.x * 0.5
+
+
+func crusher_screen_x() -> float:
+	return camera.unproject_position(Vector3(crusher_world_x(), 0.0, _top_z())).x
+
+
+func _top_z() -> float:
+	var near := camera.unproject_position(Vector3(0.0, 0.0, AREA.y)).y
+	var far := camera.unproject_position(Vector3(0.0, 0.0, -AREA.y)).y
+	return -AREA.y if far < near else AREA.y
+
+
 func screen_rect() -> Rect2:
 	var a := camera.unproject_position(Vector3(-TABLE_SIZE.x * 0.5, 0.0, -TABLE_SIZE.y * 0.5))
 	var b := camera.unproject_position(Vector3(TABLE_SIZE.x * 0.5, 0.0, TABLE_SIZE.y * 0.5))
@@ -360,6 +376,17 @@ func _process(delta: float) -> void:
 		while _carry >= 1.0:
 			_carry -= 1.0
 			_request(_rng.randf_range(-AREA.x, AREA.x), _rng.randf_range(-AREA.y, AREA.y), weight, false)
+	if auto_throw and stress_rate <= 0.0 and state.crusher_rate() > 0.0:
+		var crusher := state.crusher_rate()
+		var crusher_weight := 1.0
+		var crusher_visual := max_visual_rate() * 0.5
+		if crusher > crusher_visual:
+			crusher_weight = ceilf(crusher / crusher_visual)
+			crusher /= crusher_weight
+		_crusher_carry += crusher * delta
+		while _crusher_carry >= 1.0:
+			_crusher_carry -= 1.0
+			_request(crusher_world_x() + _rng.randf_range(-0.35, 0.35), _top_z() * _rng.randf_range(0.45, 0.95), crusher_weight, false)
 	if stress_rate <= 0.0 and _golden == null:
 		_golden_timer -= delta
 		if _golden_timer <= 0.0:
@@ -392,7 +419,7 @@ func _request(x: float, z: float, weight: float, by_hand: bool) -> void:
 	if weight > 1.0:
 		rock.ore = maxi(rock.ore, 2)       # укрупнённая глыба — всегда с рудой
 	rock.ore = mini(rock.ore, int(Biomes.LIST[_biome]["max_ore"]))   # зона ограничивает редкость
-	var vis_rate := minf(state.rain_rate(), max_visual_rate()) if auto_throw else 1.0
+	var vis_rate := minf(state.total_rock_rate(), max_visual_rate()) if auto_throw else 1.0
 	var vein_chance := float(DIAMOND_PER_HOUR[_biome]) / 3600.0 * state.diamond_chance_factor() / maxf(vis_rate, 0.2)
 	if _rng.randf() < minf(vein_chance, 0.5):
 		rock.ore = 4                                                  # алмазная жила: редкая находка, вдвое-втрое дороже
@@ -482,7 +509,7 @@ func _impact(rock: Rock) -> void:
 		collected.emit(camera.unproject_position(pos), ORE_COLORS[rock.ore])
 		if rock.ore > 0:
 			ore_collected.emit(rock.ore)
-	var rate_boost := 1.0 + 0.35 * log(maxf(state.rain_rate(), 1.0)) / log(10.0)   # чем больше добыча, тем яростнее
+	var rate_boost := 1.0 + 0.35 * log(maxf(state.total_rock_rate(), 1.0)) / log(10.0)   # чем больше добыча, тем яростнее
 	_shake = minf(0.7, _shake + (0.10 + 0.07 * log(rock.weight + 1.0)) * rate_boost / (1.0 + 0.04 * _rocks.size()))
 	if show_popups and _popup_count < MAX_POPUPS:
 		_popup("+" + NumberFormat.short(rock.payout), pos, ORE_COLORS[rock.ore] if rock.ore > 0 else UiTheme.TEXT,

@@ -17,6 +17,9 @@ func _initialize() -> void:
 	_main.state.tutorial_done = true
 	_main.state.add_coins(2.0e5)
 	_main.state.diamonds = 40
+	_main.state.levels["rain"] = 12                  # открыта Дробилка
+	_main.state.machines["crusher"] = 4
+	_main.state.machines_unlocked["crusher"] = true
 	_main.state.daily_day = ClickerState.today()      # без окна ежедневной награды в кадре
 
 
@@ -113,7 +116,13 @@ func _process(delta: float) -> bool:
 				modal.close()
 			_main._settings_screen.open()],
 		[34.0, func() -> void: _shot("21_settings_effects")],
-		[34.1, func() -> void: quit()],
+		[34.1, func() -> void:
+			for modal in _main.find_children("*", "Modal", true, false):
+				modal.close()
+			_main._settings_screen.visible = false
+			_main._machines._open_card("crusher")],
+		[34.9, func() -> void: _shot("22_machine_card")],
+		[35.0, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()
