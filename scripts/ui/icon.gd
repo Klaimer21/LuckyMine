@@ -5,6 +5,8 @@ extends Control
 var kind := "coin"
 var color := UiTheme.TEXT
 var width := 2.0
+var follow: BaseButton                 # кнопка, на которой лежит значок: отключённая кнопка красит значок приглушённым цветом
+var _enabled_color := Color.WHITE
 var outline := Color(0, 0, 0, 0)       # контур алмаза (если задан): виден и на светлой латуни
 
 
@@ -17,6 +19,22 @@ func setup(p_kind: String, p_color: Color, px: float) -> Icon:
 	width = maxf(2.0, px / 12.0)
 	queue_redraw()
 	return self
+
+
+## Значок на кнопке: пока кнопка отключена, он серый (иначе тёмный значок на тёмной кнопке пропадает).
+func follow_button(button: BaseButton) -> Icon:
+	follow = button
+	_enabled_color = color
+	button.draw.connect(_sync_with_button)
+	_sync_with_button()
+	return self
+
+
+func _sync_with_button() -> void:
+	var wanted := UiTheme.MUTE if follow.disabled else _enabled_color
+	if color != wanted:
+		color = wanted
+		queue_redraw()
 
 
 func _draw() -> void:

@@ -108,7 +108,7 @@ func rebuild() -> void:
 	_content.add_child(wallet)
 	wallet.add_child(Icon.new().setup("gem", ORE_COLORS[4], 48))
 	wallet.add_child(UiTheme.make_label(str(state.diamonds), 56, UiTheme.TEXT, true))
-	var wallet_note := UiTheme.make_label("Алмазы выпадают из редких находок: чем глубже, тем чаще.", 24, UiTheme.MUTE)
+	var wallet_note := UiTheme.make_text("Алмазы выпадают из редких находок: чем глубже, тем чаще.", 24, UiTheme.MUTE)
 	wallet_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	wallet_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wallet.add_child(wallet_note)
@@ -136,7 +136,7 @@ func rebuild() -> void:
 	var full := state.full_set_level()
 	var set_text := Tr.t("Все руды на уровне %d: ×%.2f") % [full, 1.0 + ClickerState.FULL_SET_STEP * full]
 	_content.add_child(UiTheme.make_label(Tr.t("Полный набор") + "  ·  " + set_text, 28, UiTheme.BRASS))
-	_content.add_child(UiTheme.make_label(Tr.t("Коллекция даёт навсегда: ×%.2f") % state.collection_multiplier(), 28, UiTheme.MUTE))
+	_content.add_child(UiTheme.make_text(Tr.t("Коллекция даёт навсегда: ×%.2f") % state.collection_multiplier(), 28, UiTheme.MUTE))
 
 
 func _process(delta: float) -> void:
@@ -176,7 +176,7 @@ func _expedition_loot(data: Dictionary) -> String:
 
 ## Вкладка «Походы»: один поход за раз; идёт и по реальному времени (в том числе когда игра закрыта).
 func _build_expeditions() -> void:
-	var note := UiTheme.make_label("Шахтёры уходят в поход и возвращаются с добычей: монеты, алмазы и находки в журнал.", 26, UiTheme.MUTE)
+	var note := UiTheme.make_text("Шахтёры уходят в поход и возвращаются с добычей: монеты, алмазы и находки в журнал.", 26, UiTheme.MUTE)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(note)
 	_was_ready = state.expedition_ready()
@@ -200,7 +200,7 @@ func _build_expeditions() -> void:
 			column.add_child(_expedition_label)
 			_expedition_bar = UiTheme.make_bar(0.0, UiTheme.BRASS, 12)
 			column.add_child(_expedition_bar)
-			var loot := UiTheme.make_label(Tr.t("Ожидается") + ": " + _expedition_loot(data), 26, UiTheme.MUTE)
+			var loot := UiTheme.make_text(Tr.t("Ожидается") + ": " + _expedition_loot(data), 26, UiTheme.MUTE)
 			loot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			column.add_child(loot)
 			var finish_now := UiTheme.make_key(Tr.t("Закончить за %d") % state.shop_cost("expedition_skip"), 28, "brass")
@@ -235,7 +235,7 @@ func _build_expeditions() -> void:
 		texts.add_theme_constant_override("separation", 0)
 		row.add_child(texts)
 		texts.add_child(UiTheme.make_label(data["name"], 34, UiTheme.TEXT))
-		var detail := UiTheme.make_label(Tr.t("%d ч") % int(data["hours"]) + " · " + _expedition_loot(data), 24, UiTheme.MUTE)
+		var detail := UiTheme.make_text(Tr.t("%d ч") % int(data["hours"]) + " · " + _expedition_loot(data), 24, UiTheme.MUTE)
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		texts.add_child(detail)
 		var go := UiTheme.make_key("Отправить", 28, "brass")
@@ -269,7 +269,7 @@ func _build_achievements() -> void:
 		texts.add_theme_constant_override("separation", 2)
 		row.add_child(texts)
 		texts.add_child(UiTheme.make_label(achievement["name"], 32, UiTheme.TEXT if done else UiTheme.MUTE))
-		var info := UiTheme.make_label(achievement["text"], 24, UiTheme.MUTE)
+		var info := UiTheme.make_text(achievement["text"], 24, UiTheme.MUTE)
 		info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		texts.add_child(info)
 		texts.add_child(UiTheme.make_label(_reward_text(achievement["reward"]), 24, UiTheme.BRASS))
@@ -326,7 +326,7 @@ func _build_planet() -> void:
 		column.add_child(go)
 	else:
 		var depth := Biomes.depth_m(state.total_earned, state.planet_scale())
-		column.add_child(UiTheme.make_label(Tr.t("До ядра: глубина %d м из %d м") % [depth, int(Biomes.LIST[Biomes.CORE]["depth"])], 28, UiTheme.MUTE))
+		column.add_child(UiTheme.make_text(Tr.t("До ядра: глубина %d м из %d м") % [depth, int(Biomes.LIST[Biomes.CORE]["depth"])], 28, UiTheme.MUTE))
 		column.add_child(UiTheme.make_bar(float(depth) / float(Biomes.LIST[Biomes.CORE]["depth"]), UiTheme.BRASS_DIM, 10))
 
 	_section("Мета-улучшения")
@@ -353,7 +353,7 @@ func _meta_card(entry: Dictionary) -> void:
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(name_label)
 	head.add_child(UiTheme.pip_row(level, costs.size(), 14))
-	var detail := UiTheme.make_label(entry["text"], 24, UiTheme.MUTE)
+	var detail := UiTheme.make_text(entry["text"], 24, UiTheme.MUTE)
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	texts.add_child(detail)
 	if level >= costs.size():
@@ -368,6 +368,7 @@ func _meta_card(entry: Dictionary) -> void:
 	var dust := Icon.new().setup("spark", UiTheme.DARK_ON_BRASS, 30)
 	dust.position = Vector2(20, 20)
 	buy.add_child(dust)
+	dust.follow_button(buy)
 	buy.disabled = state.stardust < cost
 	buy.pressed.connect(func() -> void:
 			meta_purchase.emit(id)
@@ -402,7 +403,7 @@ func _build_skills() -> void:
 	_content.add_child(points)
 	points.add_child(Icon.new().setup("star", UiTheme.BRASS, 48))
 	points.add_child(UiTheme.make_label(str(state.skill_points), 56, UiTheme.TEXT, true))
-	var note := UiTheme.make_label("Очки навыков даёт «Новая шахта». Навыки в ветке открываются по порядку.", 24, UiTheme.MUTE)
+	var note := UiTheme.make_text("Очки навыков даёт «Новая шахта». Навыки в ветке открываются по порядку.", 24, UiTheme.MUTE)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	points.add_child(note)
@@ -455,7 +456,7 @@ func _branch_card(branch: Dictionary) -> void:
 		row.add_child(texts)
 		var owned := i < level
 		texts.add_child(UiTheme.make_label(nodes[i][0], 30, UiTheme.TEXT if i <= level else UiTheme.MUTE))
-		var detail := UiTheme.make_label(nodes[i][1], 24, UiTheme.BRASS if owned else UiTheme.MUTE)
+		var detail := UiTheme.make_text(nodes[i][1], 24, UiTheme.BRASS if owned else UiTheme.MUTE)
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		texts.add_child(detail)
 		if owned:
@@ -470,6 +471,7 @@ func _branch_card(branch: Dictionary) -> void:
 			var star := Icon.new().setup("star", UiTheme.DARK_ON_BRASS, 30)
 			star.position = Vector2(20, 20)
 			buy.add_child(star)
+			star.follow_button(buy)
 			buy.disabled = state.skill_points < cost
 			buy.pressed.connect(func() -> void:
 					skill_purchase.emit(id)
@@ -494,7 +496,7 @@ func _ad_card(placement: String, title: String, detail: String) -> void:
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	texts.add_theme_constant_override("separation", 0)
 	texts.add_child(UiTheme.make_label(title, 32, UiTheme.TEXT))
-	var info := UiTheme.make_label(detail, 26, UiTheme.MUTE)
+	var info := UiTheme.make_text(detail, 26, UiTheme.MUTE)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	texts.add_child(info)
 	row.add_child(texts)
@@ -519,7 +521,7 @@ func _shop_card(item: String, title: String, detail: String) -> void:
 	texts.alignment = BoxContainer.ALIGNMENT_CENTER
 	texts.add_theme_constant_override("separation", 0)
 	texts.add_child(UiTheme.make_label(title, 32, UiTheme.TEXT))
-	texts.add_child(UiTheme.make_label(detail, 26, UiTheme.MUTE))
+	texts.add_child(UiTheme.make_text(detail, 26, UiTheme.MUTE))
 	row.add_child(texts)
 	var cost := state.shop_cost(item)
 	var buy := UiTheme.make_key(str(cost), 34, "brass")
@@ -574,7 +576,7 @@ func _ore_card(ore: int) -> void:
 			break
 		previous = int(need)
 	if next_need > 0:
-		texts.add_child(UiTheme.make_label(Tr.t("Найдено: %d из %d") % [count, next_need], 26, UiTheme.MUTE))
+		texts.add_child(UiTheme.make_text(Tr.t("Найдено: %d из %d") % [count, next_need], 26, UiTheme.MUTE))
 		texts.add_child(UiTheme.make_bar(float(count - previous) / float(next_need - previous), ORE_COLORS[ore], 10))
 	else:
-		texts.add_child(UiTheme.make_label(Tr.t("Найдено: %d (максимум)") % count, 26, UiTheme.MUTE))
+		texts.add_child(UiTheme.make_text(Tr.t("Найдено: %d (максимум)") % count, 26, UiTheme.MUTE))

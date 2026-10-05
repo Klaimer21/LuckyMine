@@ -507,6 +507,7 @@ func _build_ui() -> void:
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_hint.offset_top = -PANEL_HEIGHT - 70
 	_hint.offset_bottom = -PANEL_HEIGHT - 20
+	_hint.offset_left = CompanionPeek.bubble_left()      # правее Борка: он выглядывает слева и закрывал бы начало фразы
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_ui.add_child(_hint)
 

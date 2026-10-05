@@ -1,13 +1,14 @@
 # Шрифты
 
-| Роль | English | Русский |
-|---|---|---|
-| Заголовки и числа | `AlfaSlabOne-Regular.ttf` | `RussoOne-Regular.ttf` |
-| Остальной текст | `BarlowSemiCondensed-SemiBold.ttf` | `FiraSansCondensed-SemiBold.ttf` |
+| Роль | Файл (все языки, кроме китайского) |
+|---|---|
+| Заголовки и числа | `RussoOne-Regular.ttf` |
+| Остальной текст | `FiraSansCondensed-SemiBold.ttf` |
 
-Все с лицензией OFL (Google Fonts), тексты лицензий рядом (`OFL-*.txt`). Файлы выбираются по языку в `scripts/ui/ui_theme.gd`
-(`display_file()`, `body_file()`).
+Оба с лицензией OFL (Google Fonts), тексты лицензий рядом (`OFL-*.txt`). Файлы выбираются в `scripts/ui/ui_theme.gd`
+(`display_file()`, `body_file()`): один набор на всех языках, чтобы игра выглядела одинаково по-русски и по-английски.
 
-- Alfa Slab One и Barlow не содержат кириллицы, поэтому для русского взяты Russo One и Fira Sans Condensed.
+- `AlfaSlabOne-Regular.ttf` и `BarlowSemiCondensed-SemiBold.ttf` лежат рядом, но не используются: в них нет кириллицы.
+  Их можно удалить или вернуть для английской версии, поменяв `display_file()` и `body_file()`.
 - Для китайского свои шрифты не используются (в них нет иероглифов): берётся системный шрифт.
 - Недостающие знаки (например, стрелка «→» в Russo One) рисуются запасным системным шрифтом.

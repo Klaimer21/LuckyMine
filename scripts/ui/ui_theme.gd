@@ -46,11 +46,11 @@ static func install_system_font() -> void:
 
 
 static func display_file() -> String:
-	return RU_DISPLAY_FONT if Tr.language == "ru" else DISPLAY_FONT
+	return RU_DISPLAY_FONT       # один гарнитур на всех языках (Russo One содержит и латиницу, и кириллицу)
 
 
 static func body_file() -> String:
-	return RU_BODY_FONT if Tr.language == "ru" else BODY_FONT
+	return RU_BODY_FONT
 
 
 ## Файл шрифта из assets/fonts. Для китайского свои файлы не используются (в них нет иероглифов).
@@ -84,7 +84,22 @@ static func class_color(cls: String) -> Color:
 	return ENEMY
 
 
+## Меньше этого текст на телефоне плохо читается (холст 1080 px ≈ 360 dp: 30 px ≈ 10 dp).
+const MIN_LABEL_SIZE := 30
+const MIN_KEY_SIZE := 26
+
+
+## Подпись, которая переносится на следующую строку и занимает всю доступную ширину: описания и пояснения.
+## Обычная make_label не переносится: в строке с другими элементами она раздвинула бы весь экран.
+static func make_text(text: String, size: int, color := TEXT) -> Label:
+	var label := make_label(text, size, color)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return label
+
+
 static func make_label(text: String, size: int, color := TEXT, display := false) -> Label:
+	size = maxi(size, MIN_LABEL_SIZE)
 	var label := Label.new()
 	label.text = Tr.t(text)
 	label.add_theme_font_size_override("font_size", size)
@@ -140,6 +155,7 @@ static func _slider_knob() -> ImageTexture:
 
 
 static func make_button(text: String, brass: bool, size := 32) -> Button:
+	size = maxi(size, MIN_KEY_SIZE)
 	var button := Button.new()
 	button.text = Tr.t(text)
 	button.add_theme_font_size_override("font_size", size)
@@ -173,6 +189,7 @@ static func fade_in(control: Control, seconds := 0.18) -> void:
 ## Кнопка-«клавиша» с толстой нижней кромкой: при нажатии вдавливается.
 ## kind: brass, felt (включено), dark (выключено), ember (опасное действие, ржавый).
 static func make_key(text: String, size := 32, kind := "brass") -> Button:
+	size = maxi(size, MIN_KEY_SIZE)
 	var button := Button.new()
 	button.text = Tr.t(text)
 	button.add_theme_font_size_override("font_size", size)
