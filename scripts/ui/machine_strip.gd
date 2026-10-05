@@ -13,6 +13,7 @@ var _settings: Settings
 var _sfx: Sfx
 var _table: MineTable
 var _on_changed: Callable                # куплен уровень: main обновляет остальной интерфейс
+var _on_tier_up: Callable                # новый облик машины: сообщение (main показывает тост)
 var _row: HBoxContainer
 var _cells: Dictionary = {}              # id -> {button, icon, lock, label, charge, tween}
 var _card: Modal
@@ -20,13 +21,14 @@ var _card_id := ""
 var _card_parts: Dictionary = {}         # подписи и кнопка открытой карточки
 
 
-func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, sound: Sfx, mine_table: MineTable, on_changed: Callable) -> MachineStrip:
+func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, sound: Sfx, mine_table: MineTable, on_changed: Callable, on_tier_up: Callable = Callable()) -> MachineStrip:
 	host = host_node
 	state = game_state
 	_settings = game_settings
 	_sfx = sound
 	_table = mine_table
 	_on_changed = on_changed
+	_on_tier_up = on_tier_up
 	return self
 
 
@@ -109,7 +111,15 @@ func refresh() -> void:
 		var unlocked := state.machine_unlocked(id)
 		var level := state.machine_level(id)
 		var affordable := unlocked and level < state.machine_max_level(id) and state.coins >= state.machine_cost(id, 1)
-		(cell["icon"] as Icon).visible = unlocked
+		var tier := Machines.tier_for(level, state.machine_max_level(id))
+		var machine_icon: Icon = cell["icon"]
+		machine_icon.color = Machines.TIER_COLORS[tier]
+		machine_icon.tier = tier
+		machine_icon.queue_redraw()
+		if unlocked and cell.has("tier") and tier > int(cell["tier"]):
+			_tier_up(cell, id, tier)
+		cell["tier"] = tier
+		machine_icon.visible = unlocked
 		(cell["lock"] as Icon).visible = not unlocked
 		(cell["label"] as Label).text = (Tr.t("Ур. %d") % level) if unlocked else _lock_text(entry)
 		(cell["label"] as Label).add_theme_color_override("font_color", UiTheme.TEXT if unlocked else UiTheme.MUTE)
@@ -128,6 +138,18 @@ func _lock_text(entry: Dictionary) -> String:
 	if int(entry["unlock_rain"]) > 0:
 		return "%d/%d" % [mini(int(state.levels["rain"]), int(entry["unlock_rain"])), int(entry["unlock_rain"])]
 	return Tr.t("Зона %d") % int(entry["unlock_zone"])
+
+
+## Машина перешла на новый облик: пульс ячейки и сообщение.
+func _tier_up(cell: Dictionary, id: String, tier: int) -> void:
+	var button: Button = cell["button"]
+	if button.is_inside_tree() and not _settings.reduce_motion:
+		var tween := button.create_tween()
+		tween.tween_property(button, "scale", Vector2(1.18, 1.18), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.tween_property(button, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_sfx.play("claim", -6.0)
+	if _on_tier_up.is_valid():
+		_on_tier_up.call(Tr.t(str(Machines.data(id)["name"])) + ": " + Tr.t("облик") + " «" + Tr.t(Machines.TIER_NAMES[tier]) + "»")
 
 
 ## Работающая машина слегка покачивается: видно, что она трудится.
@@ -200,7 +222,7 @@ func _fill_card() -> void:
 		buy.visible = false
 		return
 	buy.visible = true
-	(_card_parts["level"] as Label).text = Tr.t("Ур. %d из %d") % [level, max_level]
+	(_card_parts["level"] as Label).text = Tr.t("Ур. %d из %d") % [level, max_level] + "  ·  " + Tr.t(Machines.TIER_NAMES[Machines.tier_for(level, max_level)])
 	var count := buy_count(id)
 	if level >= max_level:
 		(_card_parts["effect"] as Label).text = _effect_now(id, level) + "\n" + Tr.t("Максимальный уровень")

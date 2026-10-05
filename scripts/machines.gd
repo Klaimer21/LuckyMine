@@ -34,6 +34,21 @@ const AD_BOOST_SECONDS := 300.0          # реклама «Машины ×2»
 const AD_BOOST_FACTOR := 2.0
 
 
+## Облики машины по уровню: 0 — дерево, 1 — железо (латунные заклёпки), 2 — сталь (золотой ободок).
+## Границы пропорциональны пределу уровня машины (у разных машин он разный): с 40% и с 80% от предела.
+const TIER_NAMES := ["Дерево", "Железо", "Сталь"]
+const TIER_COLORS := [Color(0.80, 0.60, 0.38), Color(0.68, 0.76, 0.78), Color(0.90, 0.95, 0.93)]
+
+
+static func tier_for(level: int, max_level: int) -> int:
+	if max_level <= 0 or level <= 0:
+		return 0
+	var share := float(level) / float(max_level)
+	if share >= 0.8:
+		return 2
+	return 1 if share >= 0.4 else 0
+
+
 static func ids() -> Array:
 	var out: Array = []
 	for entry in LIST:

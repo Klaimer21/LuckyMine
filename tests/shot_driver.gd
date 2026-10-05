@@ -22,10 +22,10 @@ func _initialize() -> void:
 	_main.state.machines_unlocked["crusher"] = true
 	_main.state.machines_unlocked["conveyor"] = true
 	_main.state.machines_unlocked["blaster"] = true
-	_main.state.machines["conveyor"] = 3
+	_main.state.machines["conveyor"] = 8
 	_main.state.machines["blaster"] = 5
 	_main.state.machines_unlocked["lab"] = true
-	_main.state.machines["lab"] = 6
+	_main.state.machines["lab"] = 17
 	_main.state.machine_boost_time = 200.0
 	_main.state.daily_day = ClickerState.today()      # без окна ежедневной награды в кадре
 

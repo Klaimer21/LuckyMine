@@ -5,6 +5,7 @@ extends Control
 var kind := "coin"
 var color := UiTheme.TEXT
 var width := 2.0
+var tier := 0                          # облик машины: 1 — латунные заклёпки, 2 — ещё и золотой ободок
 var follow: BaseButton                 # кнопка, на которой лежит значок: отключённая кнопка красит значок приглушённым цветом
 var _enabled_color := Color.WHITE
 var outline := Color(0, 0, 0, 0)       # контур алмаза (если задан): виден и на светлой латуни
@@ -158,6 +159,11 @@ func _draw() -> void:
 			draw_polyline(_pts(s, [[0.5, 0.08], [0.62, 0.38], [0.94, 0.4], [0.7, 0.6], [0.78, 0.92],
 					[0.5, 0.74], [0.22, 0.92], [0.3, 0.6], [0.06, 0.4], [0.38, 0.38], [0.5, 0.08]]),
 					color, width)
+	if tier >= 1:
+		for corner in [Vector2(0.06, 0.06), Vector2(0.94, 0.06), Vector2(0.06, 0.94), Vector2(0.94, 0.94)]:
+			draw_circle(corner * s, s * 0.035, UiTheme.BRASS)
+	if tier >= 2:
+		draw_arc(Vector2(s, s) * 0.5, s * 0.5, 0.0, TAU, 48, Color(0.88, 0.71, 0.29), width * 0.7)
 
 
 func _pts(s: float, list: Array) -> PackedVector2Array:

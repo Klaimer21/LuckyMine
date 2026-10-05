@@ -137,7 +137,7 @@ func _ready() -> void:
 	RenderingServer.set_default_clear_color(UiTheme.BG)       # поля при «keep» того же цвета, что и фон интерфейса
 	_apply_aspect()
 	_save_dialogs.setup(_ui, state, _show_toast)
-	_machines.setup(_ui, state, settings, sfx, _table, _refresh)
+	_machines.setup(_ui, state, settings, sfx, _table, _refresh, _show_toast)
 	_sheet.setup(_ui, state, settings, sfx, PANEL_HEIGHT, _refresh, func(px: float) -> void: _hint_card.set_lift(px),
 			func(key: String) -> void: _tutorial.notify("buy_" + key))
 	_progression.setup(_ui, state, _table, sfx, music, settings, _show_toast,

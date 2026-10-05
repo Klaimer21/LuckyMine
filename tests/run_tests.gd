@@ -25,6 +25,7 @@ func _init() -> void:
 	_test_machines()
 	_test_machines_stage1()
 	_test_machines_stage2()
+	_test_machine_tiers()
 	_test_hints()
 	_test_plurals()
 	_test_time()
@@ -421,6 +422,15 @@ func _test_machines_stage2() -> void:
 	loaded.load_from_text(saved.serialize())
 	_check(loaded.machine_level("lab") == 4 and loaded.machine_level("cart") == 2 and is_equal_approx(loaded.lab_progress, 123.0), "Laboratory and Cart persist")
 	_check(loaded.machine_unlocked("cart"), "Cart unlocks in zone 4")
+
+
+func _test_machine_tiers() -> void:
+	_check(Machines.tier_for(0, 20) == 0 and Machines.tier_for(7, 20) == 0, "wood look at low levels")
+	_check(Machines.tier_for(8, 20) == 1 and Machines.tier_for(15, 20) == 1, "iron look from 40%")
+	_check(Machines.tier_for(16, 20) == 2 and Machines.tier_for(20, 20) == 2, "steel look from 80%")
+	_check(Machines.tier_for(6, 15) == 1 and Machines.tier_for(12, 15) == 2 and Machines.tier_for(5, 12) == 1 and Machines.tier_for(10, 12) == 2, "tiers scale with the max level")
+	_check(Machines.tier_for(5, 0) == 0, "no division by zero for a zero max level")
+	_check(Machines.TIER_NAMES.size() == 3 and Machines.TIER_COLORS.size() == 3, "three looks defined")
 
 
 func _test_hints() -> void:
