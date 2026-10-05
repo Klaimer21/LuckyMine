@@ -133,6 +133,8 @@ func show_offline(earned: float) -> Modal:
 		var cap := UiTheme.make_label(Tr.t("Офлайн-доход копится не дольше %s. «Долгая смена» на вкладке «Планета» увеличивает лимит.") % format_duration(state.offline_cap_seconds()), 24, UiTheme.MUTE)
 		cap.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		modal.body.add_child(cap)
+	if state.offline_lab_diamonds > 0:
+		modal.body.add_child(UiTheme.make_text(Tr.fmt("Лаборатория: +%d алмазов", [state.offline_lab_diamonds]), 30, UiTheme.TEXT))
 	if state.expedition_ready():
 		modal.body.add_child(UiTheme.make_label(Tr.t("Поход завершён: заберите добычу в журнале."), 26, UiTheme.TEXT))
 	if state.claimable_achievements() > 0:

@@ -85,6 +85,8 @@ func _screens(language: String) -> void:
 		"карточка Конвейера": func() -> void: _main._machines._open_card("conveyor"),
 		"карточка Подрывника": func() -> void: _main._machines._open_card("blaster"),
 		"карточка Лебёдки (закрыта)": func() -> void: _main._machines._open_card("winch"),
+		"карточка Лаборатории": func() -> void: _main._machines._open_card("lab"),
+		"карточка Вагонетки (закрыта)": func() -> void: _main._machines._open_card("cart"),
 		"помощь": func() -> void:
 			for id in ["first_ore", "first_gold", "first_diamond", "zone_2", "first_boss"]:
 				_main.state.hints_seen[id] = true

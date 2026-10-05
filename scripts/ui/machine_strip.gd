@@ -242,6 +242,11 @@ func _effect_text(id: String, level: int) -> String:
 			text = Tr.t("не куплен") if interval <= 0.0 else Tr.t("взрыв раз в %d с, награда %d с дохода") % [roundi(interval), roundi(Machines.BLASTER_SECONDS)]
 		"winch":
 			text = Tr.t("походы короче на %d%%, офлайн-лимит +%s") % [roundi(100.0 * (1.0 - state.expedition_time_factor())), _hours(Machines.WINCH_OFFLINE_STEP * level)]
+		"lab":
+			var period := state.lab_interval()
+			text = Tr.t("не куплена") if period <= 0.0 else Tr.t("алмаз раз в %d с") % roundi(period)
+		"cart":
+			text = Tr.t("«Запал» %.1f с, пауза %.1f с") % [state.mini_seconds(), state.mini_cooldown_seconds()]
 	state.machines[id] = saved
 	return text
 

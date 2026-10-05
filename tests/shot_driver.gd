@@ -24,6 +24,9 @@ func _initialize() -> void:
 	_main.state.machines_unlocked["blaster"] = true
 	_main.state.machines["conveyor"] = 3
 	_main.state.machines["blaster"] = 5
+	_main.state.machines_unlocked["lab"] = true
+	_main.state.machines["lab"] = 6
+	_main.state.machine_boost_time = 200.0
 	_main.state.daily_day = ClickerState.today()      # без окна ежедневной награды в кадре
 
 
@@ -124,7 +127,7 @@ func _process(delta: float) -> bool:
 			for modal in _main.find_children("*", "Modal", true, false):
 				modal.close()
 			_main._settings_screen.visible = false
-			_main._machines._open_card("blaster")],
+			_main._machines._open_card("lab")],
 		[34.9, func() -> void: _shot("22_machine_card")],
 		[35.0, func() -> void: quit()],
 	]

@@ -12,6 +12,7 @@ const PLACEMENTS := {
 	"diamonds": {"cooldown": 900.0},   # алмазы
 	"dynamite": {"cooldown": 1800.0},  # динамит
 	"expedition": {"cooldown": 0.0},   # дособрать поход сразу
+	"machines": {"cooldown": 1800.0},  # Дробилка и Подрывник ×2 на 5 минут
 }
 
 var host: Control

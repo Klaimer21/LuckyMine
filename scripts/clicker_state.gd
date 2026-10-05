@@ -69,8 +69,11 @@ var ending_seen := false
 var veins := 0                     # жилы: постоянный множитель дохода
 var prestiges := 0
 var levels := {"rain": 0, "tap": 0, "faces": 0, "mult": 0}
-var machines := {"crusher": 0, "conveyor": 0, "blaster": 0, "winch": 0}   # уровни машин (сбрасываются с «Новой шахтой»)
+var machines := {"crusher": 0, "conveyor": 0, "lab": 0, "blaster": 0, "winch": 0, "cart": 0}   # уровни машин (сбрасываются с «Новой шахтой»)
 var machines_unlocked := {}            # id -> true: открытые машины (остаются навсегда)
+var machine_boost_time := 0.0          # реклама «Машины ×2»: секунд осталось (не сохраняется)
+var lab_progress := 0.0                # секунд накоплено до следующего алмаза Лаборатории
+var offline_lab_diamonds := 0          # алмазов от Лаборатории за последнее отсутствие
 var last_seen := 0.0
 var auto_throw := true
 var autobuy_on := true               # включатель автопокупки (работает, если куплено мета-улучшение)
@@ -117,12 +120,46 @@ func rain_rate() -> float:
 ## Глыбы в секунду от Дробилки: доля потока «Камнепада» за каждый уровень машины (и навык «Бур» действует на оба потока).
 func crusher_rate() -> float:
 	var info: Dictionary = Machines.data("crusher")
-	return float(info["step"]) * machine_level("crusher") * (1.0 + 0.8 * levels["rain"]) * (1.0 + float(DRILL_BONUS[skill_level("drill")]))
+	return float(info["step"]) * machine_level("crusher") * (1.0 + 0.8 * levels["rain"]) * (1.0 + float(DRILL_BONUS[skill_level("drill")])) * machine_boost_factor()
 
 
 ## Все глыбы в секунду: «Камнепад» плюс машины.
 func total_rock_rate() -> float:
 	return rain_rate() + crusher_rate()
+
+
+## Реклама «Машины ×2»: Дробилка и Подрывник работают вдвое быстрее, пока идёт время.
+func machine_boost_factor() -> float:
+	return Machines.AD_BOOST_FACTOR if machine_boost_time > 0.0 else 1.0
+
+
+## Лаборатория: секунд на один алмаз (0 — не куплена).
+func lab_interval() -> float:
+	var level := machine_level("lab")
+	if level < 1:
+		return 0.0
+	return maxf(Machines.LAB_MIN_PERIOD, Machines.LAB_BASE_PERIOD - float(Machines.data("lab")["step"]) * level)
+
+
+## Вагонетка: пауза между «Золотыми запалами» и их длительность.
+func mini_cooldown_seconds() -> float:
+	return maxf(2.0, MINI_COOLDOWN - float(Machines.data("cart")["step"]) * machine_level("cart"))
+
+
+## Каждый кадр: время рекламного буста машин и капли алмазов Лаборатории. Возвращает, сколько алмазов только что выпало.
+func tick_machines(delta: float) -> int:
+	machine_boost_time = maxf(0.0, machine_boost_time - delta)
+	var interval := lab_interval()
+	if interval <= 0.0:
+		lab_progress = 0.0
+		return 0
+	lab_progress += delta
+	var gained := 0
+	while lab_progress >= interval and gained < 5:
+		lab_progress -= interval
+		diamonds += 1
+		gained += 1
+	return gained
 
 
 ## Конвейер: на сколько опускаются пороги ценности, с которых в глыбе есть руда (доля от максимума).
@@ -135,7 +172,7 @@ func blaster_interval() -> float:
 	var level := machine_level("blaster")
 	if level < 1:
 		return 0.0
-	return maxf(Machines.BLASTER_MIN_PERIOD, Machines.BLASTER_BASE_PERIOD - float(Machines.data("blaster")["step"]) * level)
+	return maxf(Machines.BLASTER_MIN_PERIOD, Machines.BLASTER_BASE_PERIOD - float(Machines.data("blaster")["step"]) * level) / machine_boost_factor()
 
 
 ## Доля дохода от глыб, которую в среднем добавляют взрывы Подрывника.
@@ -306,7 +343,7 @@ func diamond_chance_factor() -> float:
 
 
 func mini_seconds() -> float:
-	return MINI_SECONDS + (2.0 if skill_level("luck") >= 2 else 0.0)
+	return MINI_SECONDS + (2.0 if skill_level("luck") >= 2 else 0.0) + Machines.CART_SECONDS_STEP * machine_level("cart")
 
 
 func golden_interval_factor() -> float:
@@ -748,7 +785,7 @@ func tick_boost(delta: float) -> void:
 	if boost_time > 0.0:
 		boost_time = maxf(0.0, boost_time - delta)
 		if boost_time <= 0.0 and boost_factor < BOOST_FACTOR:
-			mini_cooldown = MINI_COOLDOWN
+			mini_cooldown = mini_cooldown_seconds()
 	elif mini_cooldown > 0.0:
 		mini_cooldown = maxf(0.0, mini_cooldown - delta)
 
@@ -858,7 +895,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1015,6 +1052,7 @@ func _apply_save(data: Dictionary) -> float:
 	var saved_machines := _as_dict(data.get("machines"))
 	for id in Machines.ids():
 		machines[id] = _count(saved_machines.get(id), 0, int(Machines.data(id)["max_level"]))
+	lab_progress = clampf(_num(data.get("lab_progress"), 0.0), 0.0, 100000.0)
 	machines_unlocked = {}
 	for id in _as_array(data.get("machines_unlocked")):
 		if Machines.ids().has(str(id)):
@@ -1024,6 +1062,11 @@ func _apply_save(data: Dictionary) -> float:
 	var gone := maxf(0.0, now() - _num(data.get("last_seen"), 0.0))
 	var away := minf(gone, offline_cap_seconds())
 	offline_away = away
+	offline_lab_diamonds = 0
+	var lab_period := lab_interval()
+	if lab_period > 0.0:
+		offline_lab_diamonds = mini(floori((away + lab_progress) / lab_period), Machines.LAB_OFFLINE_CAP)
+		diamonds += offline_lab_diamonds
 	offline_capped = gone > offline_cap_seconds()
 	var earned := income_per_second() * away
 	add_coins(earned)

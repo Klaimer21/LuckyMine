@@ -132,6 +132,8 @@ func _build_shop() -> void:
 	_ad_card("diamonds", Tr.t("Алмазы: +%d") % state.ad_diamonds(), "за короткую рекламу")
 	_ad_card("rush", "Золотая лихорадка", "×7 к добыче на 5 минут за рекламу")
 	_ad_card("dynamite", Tr.t("Динамит ×2"), "за короткую рекламу")
+	if state.machine_unlocked("crusher") or state.machine_unlocked("blaster"):
+		_ad_card("machines", Tr.t("Машины ×2"), "Дробилка и Подрывник вдвое быстрее на 5 минут")
 
 	_section("Лавка алмазов")
 	_shop_card("rush", "Золотая лихорадка", "×7 к добыче на 5 минут")

@@ -96,6 +96,9 @@ func grant_ad_reward(placement: String) -> void:
 			var gems := state.ad_diamonds()
 			state.diamonds += gems
 			_toast.call(Tr.t("Алмазы: +%d") % gems)
+		"machines":
+			state.machine_boost_time = Machines.AD_BOOST_SECONDS
+			_toast.call(Tr.t("Машины ×2 на 5 минут"))
 		"expedition":
 			if not state.expedition_active() or state.expedition_ready():
 				return

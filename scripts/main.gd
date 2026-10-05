@@ -388,8 +388,16 @@ func _planet_arrival_line() -> void:
 ## «Золотая лихорадка» и «Динамит»: таймеры, подписи, состояние клавиши.
 func _update_abilities(delta: float) -> void:
 	state.tick_boost(delta)
+	var lab_diamonds := state.tick_machines(delta)
+	if lab_diamonds > 0:
+		_show_toast(Tr.fmt("Лаборатория: +%d алмазов", [lab_diamonds]))
+		sfx.play("claim", -9.0)
 	var boosted := state.boost_time > 0.0
-	_boost_label.visible = boosted
+	var machine_boosted := state.machine_boost_time > 0.0
+	_boost_label.visible = boosted or machine_boosted
+	if not boosted and machine_boosted:
+		var machine_left := int(ceilf(state.machine_boost_time))
+		_boost_label.text = Tr.t("Машины ×2 · %s") % ("%d:%02d" % [floori(machine_left / 60.0), machine_left % 60])
 	if boosted:
 		var left := int(ceilf(state.boost_time))
 		var left_text := ("%d:%02d" % [floori(left / 60.0), left % 60]) if left >= 60 else (Tr.t("%d с") % left)

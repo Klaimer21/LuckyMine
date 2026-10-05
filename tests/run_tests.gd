@@ -24,6 +24,7 @@ func _init() -> void:
 	_test_biomes()
 	_test_machines()
 	_test_machines_stage1()
+	_test_machines_stage2()
 	_test_hints()
 	_test_plurals()
 	_test_time()
@@ -313,7 +314,7 @@ func _test_machines_stage1() -> void:
 	state.update_machine_unlocks()
 	_check(not state.machine_unlocked("conveyor") and not state.machine_unlocked("blaster") and not state.machine_unlocked("winch"), "zone machines locked in zone 0")
 	state.total_earned = 3.0e6
-	_check(state.update_machine_unlocks() == ["conveyor"], "Conveyor unlocks in zone 1")
+	_check(state.update_machine_unlocks() == ["conveyor", "lab"], "Conveyor and Laboratory unlock in zone 1")
 	state.total_earned = 2.0e8
 	_check(state.update_machine_unlocks() == ["blaster"], "Blaster unlocks in zone 2")
 	state.total_earned = 2.0e11
@@ -359,6 +360,67 @@ func _test_machines_stage1() -> void:
 	_check(saved.machine_level("blaster") == 0 and saved.machine_unlocked("winch"), "New Mine resets levels, keeps unlocks")
 	# цены растут и масштабируются
 	_check(state.machine_cost("conveyor", 1) < state.machine_cost("blaster", 1) and state.machine_cost("blaster", 1) < state.machine_cost("winch", 1), "later machines cost more")
+
+
+func _test_machines_stage2() -> void:
+	var state := ClickerState.new()
+	# Лаборатория
+	_check(state.lab_interval() == 0.0 and state.tick_machines(1000.0) == 0, "Laboratory idle at level 0")
+	state.machines["lab"] = 1
+	_check(is_equal_approx(state.lab_interval(), 575.0), "Laboratory period at level 1")
+	state.machines["lab"] = 20
+	_check(is_equal_approx(state.lab_interval(), 100.0), "Laboratory period at level 20")
+	var before := state.diamonds
+	var gained := 0
+	for i in 250:
+		gained += state.tick_machines(1.0)
+	_check(gained == 2 and state.diamonds == before + 2, "Laboratory drips a diamond every 100 s")
+	_check(state.tick_machines(100000.0) <= 5, "one tick never floods diamonds")
+	# офлайн-алмазы Лаборатории
+	var away := ClickerState.new()
+	away.machines["lab"] = 20
+	var snapshot := away.serialize()
+	ClickerState.clock_offset += 1000.0
+	var back := ClickerState.new()
+	back.load_from_text(snapshot)
+	_check(back.offline_lab_diamonds == 10 and back.diamonds == 10, "Laboratory brews diamonds while away")
+	ClickerState.clock_offset += 100.0 * 3600.0
+	var long_away := ClickerState.new()
+	long_away.load_from_text(snapshot)
+	_check(long_away.offline_lab_diamonds == Machines.LAB_OFFLINE_CAP, "offline Laboratory diamonds are capped")
+	ClickerState.clock_offset = 0.0
+	# Вагонетка
+	var cart := ClickerState.new()
+	var spark := cart.mini_seconds()
+	_check(is_equal_approx(cart.mini_cooldown_seconds(), 8.0), "Spark pause without the Cart")
+	cart.machines["cart"] = 15
+	_check(is_equal_approx(cart.mini_cooldown_seconds(), 2.0) and is_equal_approx(cart.mini_seconds(), spark + 1.5), "Cart shortens the pause and lengthens the Spark")
+	cart.start_mini(1.0)
+	cart.tick_boost(2.0)
+	_check(is_equal_approx(cart.mini_cooldown, 2.0), "Spark pause uses the Cart value")
+	# реклама «Машины ×2»
+	var boosted := ClickerState.new()
+	boosted.levels["rain"] = 5
+	boosted.machines["crusher"] = 10
+	boosted.machines["blaster"] = 5
+	var rate := boosted.crusher_rate()
+	var interval := boosted.blaster_interval()
+	boosted.machine_boost_time = 10.0
+	_check(is_equal_approx(boosted.crusher_rate(), rate * 2.0) and is_equal_approx(boosted.blaster_interval(), interval * 0.5), "ad boost doubles Crusher and Blaster")
+	boosted.tick_machines(11.0)
+	_check(is_equal_approx(boosted.crusher_rate(), rate), "ad boost expires")
+	_check(Ads.PLACEMENTS.has("machines"), "machine boost is an ad placement")
+	# сохранение
+	var saved := ClickerState.new()
+	saved.machines["lab"] = 4
+	saved.machines["cart"] = 2
+	saved.total_earned = 1.0e15
+	saved.update_machine_unlocks()
+	saved.lab_progress = 123.0
+	var loaded := ClickerState.new()
+	loaded.load_from_text(saved.serialize())
+	_check(loaded.machine_level("lab") == 4 and loaded.machine_level("cart") == 2 and is_equal_approx(loaded.lab_progress, 123.0), "Laboratory and Cart persist")
+	_check(loaded.machine_unlocked("cart"), "Cart unlocks in zone 4")
 
 
 func _test_hints() -> void:

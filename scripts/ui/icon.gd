@@ -131,6 +131,16 @@ func _draw() -> void:
 			draw_line(Vector2(s * 0.3, s * 0.3), Vector2(s * 0.3, s * 0.76), color, width)
 			draw_polyline(_pts(s, [[0.3, 0.76], [0.3, 0.9], [0.4, 0.9], [0.4, 0.84]]), color, width)
 			draw_line(Vector2(s * 0.12, s * 0.08), Vector2(s * 0.88, s * 0.08), color, width)
+		"lab":
+			draw_polyline(_pts(s, [[0.42, 0.12], [0.42, 0.42], [0.18, 0.84], [0.82, 0.84], [0.58, 0.42], [0.58, 0.12]]), color, width)
+			draw_line(Vector2(s * 0.34, s * 0.12), Vector2(s * 0.66, s * 0.12), color, width)
+			draw_line(Vector2(s * 0.26, s * 0.66), Vector2(s * 0.74, s * 0.66), color, width)
+			draw_circle(Vector2(s * 0.5, s * 0.76), s * 0.05, color)
+		"cart":
+			draw_polyline(_pts(s, [[0.12, 0.38], [0.88, 0.38], [0.78, 0.7], [0.22, 0.7], [0.12, 0.38]]), color, width)
+			draw_circle(Vector2(s * 0.3, s * 0.82), s * 0.08, color)
+			draw_circle(Vector2(s * 0.7, s * 0.82), s * 0.08, color)
+			draw_polyline(_pts(s, [[0.26, 0.38], [0.34, 0.24], [0.5, 0.3], [0.62, 0.2], [0.74, 0.38]]), color, width)
 		"dynamite":
 			draw_rect(Rect2(s * 0.3, s * 0.38, s * 0.4, s * 0.52), color, false, width)
 			draw_line(Vector2(s * 0.3, s * 0.56), Vector2(s * 0.7, s * 0.56), color, width)
