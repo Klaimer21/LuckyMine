@@ -160,6 +160,9 @@ func rebuild() -> void:
 	_add_toggle("Числа при ударе", settings.popups, func(on: bool) -> void:
 			settings.popups = on
 			_changed())
+	_add_toggle("Пауза кадра на находках", settings.hit_stop, func(on: bool) -> void:
+			settings.hit_stop = on
+			_changed())
 
 	_add_section("Перенос прогресса")
 	var transfer_note := UiTheme.make_label("Код хранит весь прогресс: перенесите игру на другое устройство или сохраните копию. Не показывайте его другим.", 24, UiTheme.MUTE)

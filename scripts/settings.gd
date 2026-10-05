@@ -20,6 +20,7 @@ var keep_awake := true           # не гасить экран на телеф�
 var render_scale := 1.0          # доля разрешения 3D-сцены
 var fps_cap := 60
 var popups := true
+var hit_stop := true             # короткая «заморозка» кадра на редких находках (алмаз, золотая глыба, хранитель)
 var show_fps := false
 var sound_on := true
 var music_volume := 0.7
@@ -46,6 +47,7 @@ func load_settings() -> void:
 	if not fps_cap in FPS_OPTIONS:
 		fps_cap = 60
 	popups = bool(config.get_value("main", "popups", popups))
+	hit_stop = bool(config.get_value("main", "hit_stop", hit_stop))
 	show_fps = bool(config.get_value("main", "show_fps", show_fps))
 	sound_on = bool(config.get_value("main", "sound_on", sound_on))
 	music_volume = clampf(float(config.get_value("main", "music_volume", music_volume)), 0.0, 1.0)
@@ -65,6 +67,7 @@ func save() -> void:
 	config.set_value("main", "render_scale", render_scale)
 	config.set_value("main", "fps_cap", fps_cap)
 	config.set_value("main", "popups", popups)
+	config.set_value("main", "hit_stop", hit_stop)
 	config.set_value("main", "show_fps", show_fps)
 	config.set_value("main", "sound_on", sound_on)
 	config.set_value("main", "music_volume", music_volume)

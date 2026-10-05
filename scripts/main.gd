@@ -90,6 +90,7 @@ func _ready() -> void:
 			_show_toast(Tr.t("Золотая глыба! Коснитесь её"))
 			sfx.play("golden", -4.0))
 	_table.golden_hit.connect(func() -> void:
+			_hit_stop(0.07)
 			state.start_rush(ClickerState.BOOST_SECONDS, false)
 			state.golden_caught += 1
 			if state.golden_caught % 3 == 0:
@@ -115,7 +116,10 @@ func _ready() -> void:
 				state.rocks_broken += 1
 				sfx.crack())
 	_table.detonated.connect(func(screen_pos: Vector2) -> void: _fx.blast(screen_pos))
-	_table.gem_spawned.connect(func(screen_pos: Vector2, _ore: int) -> void: _fx.glint(screen_pos))
+	_table.gem_spawned.connect(func(screen_pos: Vector2, ore: int) -> void:
+			_fx.glint(screen_pos)
+			if ore == 4:
+				_hit_stop(0.07))
 	_table.collected.connect(func(screen_pos: Vector2, color: Color) -> void: _fx.emit_sparks(screen_pos, color))
 
 	var layer := CanvasLayer.new()
@@ -414,7 +418,16 @@ func _on_ore_collected(ore: int) -> void:
 		_say_hint("first_diamond", "Алмаз! Это вторая валюта: в журнале («Руда») за неё можно купить «Золотую лихорадку» и динамит.")
 
 
+## Короткая «заморозка» кадра на редкой находке: вес событию. Время возвращается по таймеру реального времени.
+func _hit_stop(seconds: float) -> void:
+	if not settings.hit_stop or _perf.stress_active or Engine.time_scale != 1.0:
+		return
+	Engine.time_scale = 0.05
+	get_tree().create_timer(seconds, true, false, true).timeout.connect(func() -> void: Engine.time_scale = 1.0)
+
+
 func _on_boss_defeated(zone: int) -> void:
+	_hit_stop(0.09)
 	var gems := int(round((2 + zone) * state.boss_reward_factor()))
 	state.diamonds += gems
 	state.bosses_defeated += 1
@@ -602,7 +615,7 @@ func _build_top() -> void:
 	_coins_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_coins_label)
 	_journal_button = UiTheme.make_button("0", false, 28)
-	_journal_button.custom_minimum_size = Vector2(150, 64)
+	_journal_button.custom_minimum_size = Vector2(150, 76)
 	_journal_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_journal_button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	var journal_icon := Icon.new().setup("journal", UiTheme.MUTE, 34)
@@ -612,7 +625,7 @@ func _build_top() -> void:
 			_journal.open()
 			_say_hint("journal_first", "Походы идут по реальному времени, даже пока игра закрыта: отправьте шахтёров и возвращайтесь за добычей."))
 	top.add_child(_journal_button)
-	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 36, Vector2(72, 64))
+	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 36, Vector2(76, 76))
 	gear.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	gear.pressed.connect(func() -> void: _settings_screen.open())
 	top.add_child(gear)
@@ -646,7 +659,7 @@ func _build_top() -> void:
 	depth_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	depth_row.add_child(depth_spacer)
 	_prestige_button = UiTheme.make_key("Новая шахта", 24, "dark")
-	_prestige_button.custom_minimum_size = Vector2(0, 60)
+	_prestige_button.custom_minimum_size = Vector2(0, 72)
 	_prestige_button.visible = false
 	_prestige_button.pressed.connect(_progression.show_prestige)
 	depth_row.add_child(_prestige_button)
