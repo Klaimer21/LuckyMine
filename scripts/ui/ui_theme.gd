@@ -20,11 +20,9 @@ const ENEMY := Color(0.169, 0.165, 0.161)
 const ENEMY_INK := Color(0.753, 0.333, 0.247)
 const DARK_ON_BRASS := Color(0.10, 0.08, 0.03)
 
-const DISPLAY_FONT := "AlfaSlabOne-Regular.ttf"
-const BODY_FONT := "BarlowSemiCondensed-SemiBold.ttf"
-## Для русского: те же роли, но шрифты с кириллицей (Alfa Slab One и Barlow её не содержат).
-const RU_DISPLAY_FONT := "RussoOne-Regular.ttf"
-const RU_BODY_FONT := "FiraSansCondensed-SemiBold.ttf"
+## Шрифты (один набор на все языки, кроме китайского: Russo One и Fira Sans Condensed содержат латиницу и кириллицу).
+const DISPLAY_FONT := "RussoOne-Regular.ttf"
+const BODY_FONT := "FiraSansCondensed-SemiBold.ttf"
 
 
 static var _system_font: SystemFont
@@ -46,15 +44,15 @@ static func install_system_font() -> void:
 
 
 static func display_file() -> String:
-	return RU_DISPLAY_FONT       # один гарнитур на всех языках (Russo One содержит и латиницу, и кириллицу)
+	return DISPLAY_FONT
 
 
 static func body_file() -> String:
-	return RU_BODY_FONT
+	return BODY_FONT
 
 
 ## Файл шрифта из assets/fonts. Для китайского свои файлы не используются (в них нет иероглифов).
-## В Alfa Slab One и Barlow нет кириллицы: русские буквы и стрелки берутся из системного шрифта (запасной).
+## Знаки, которых нет в шрифте (например, стрелка в Russo One), берутся из системного шрифта (запасной).
 static func font(file_name: String) -> Font:
 	if Tr.language == "zh":
 		return null

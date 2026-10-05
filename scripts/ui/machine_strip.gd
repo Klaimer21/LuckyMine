@@ -128,7 +128,7 @@ func refresh() -> void:
 		var button: Button = cell["button"]
 		for style_name in ["normal", "hover", "pressed", "focus", "disabled"]:
 			button.add_theme_stylebox_override(style_name, UiTheme.panel_style(UiTheme.FELT if unlocked and level > 0 else UiTheme.SURFACE, border, 3 if affordable else 2, 18, 8))
-		_animate(cell, unlocked and level > 0 and not _settings.reduce_motion)
+		_animate(cell, id, unlocked and level > 0 and not _settings.reduce_motion)
 	if _card != null and is_instance_valid(_card) and not _card.is_queued_for_deletion():
 		_fill_card()
 
@@ -152,18 +152,50 @@ func _tier_up(cell: Dictionary, id: String, tier: int) -> void:
 		_on_tier_up.call(Tr.t(str(Machines.data(id)["name"])) + ": " + Tr.t("облик") + " «" + Tr.t(Machines.TIER_NAMES[tier]) + "»")
 
 
-## Работающая машина слегка покачивается: видно, что она трудится.
-func _animate(cell: Dictionary, working: bool) -> void:
+## Работающая машина движется по-своему: Дробилка трясётся, Конвейер ходит из стороны в сторону, Лаборатория «булькает»,
+## Подрывник качает поршень, Лебёдка раскачивается, Вагонетка катается. «Меньше эффектов» останавливает движение.
+func _animate(cell: Dictionary, id: String, working: bool) -> void:
 	var icon: Icon = cell["icon"]
 	if working and cell["tween"] == null and icon.is_inside_tree():
+		var base := icon.position
 		var tween := icon.create_tween().set_loops()
-		tween.tween_property(icon, "rotation", 0.06, 0.28).set_trans(Tween.TRANS_SINE)
-		tween.tween_property(icon, "rotation", -0.06, 0.28).set_trans(Tween.TRANS_SINE)
+		match id:
+			"conveyor":
+				tween.tween_property(icon, "position:x", base.x + 8.0, 0.5)
+				tween.tween_property(icon, "position:x", base.x - 8.0, 0.5)
+			"lab":
+				tween.tween_property(icon, "scale", Vector2(1.1, 1.1), 0.55).set_trans(Tween.TRANS_SINE)
+				tween.tween_property(icon, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_SINE)
+			"blaster":
+				tween.tween_property(icon, "position:y", base.y + 7.0, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+				tween.tween_property(icon, "position:y", base.y, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			"winch":
+				tween.tween_property(icon, "rotation", 0.22, 0.8).set_trans(Tween.TRANS_SINE)
+				tween.tween_property(icon, "rotation", -0.22, 0.8).set_trans(Tween.TRANS_SINE)
+			"cart":
+				tween.tween_property(icon, "position:x", base.x + 10.0, 0.9).set_trans(Tween.TRANS_SINE)
+				tween.tween_property(icon, "position:x", base.x - 10.0, 0.9).set_trans(Tween.TRANS_SINE)
+			_:
+				tween.tween_property(icon, "rotation", 0.06, 0.28).set_trans(Tween.TRANS_SINE)
+				tween.tween_property(icon, "rotation", -0.06, 0.28).set_trans(Tween.TRANS_SINE)
 		cell["tween"] = tween
+		cell["base"] = base
 	elif not working and cell["tween"] != null:
 		(cell["tween"] as Tween).kill()
 		cell["tween"] = null
 		icon.rotation = 0.0
+		icon.scale = Vector2.ONE
+		icon.position = cell["base"]
+
+
+## Прямоугольники для обучения: ячейка машины и весь ряд.
+func cell_rect(id: String) -> Rect2:
+	var cell: Dictionary = _cells.get(id, {})
+	return (cell["button"] as Control).get_global_rect() if not cell.is_empty() else Rect2()
+
+
+func row_rect() -> Rect2:
+	return _row.get_global_rect() if _row != null else Rect2()
 
 
 # ---------- Карточка машины ----------

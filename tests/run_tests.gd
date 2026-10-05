@@ -26,7 +26,9 @@ func _init() -> void:
 	_test_machines_stage1()
 	_test_machines_stage2()
 	_test_machine_tiers()
+	_test_cart_in_play()
 	_test_seasons()
+	_test_version()
 	_test_hints()
 	_test_plurals()
 	_test_time()
@@ -449,6 +451,39 @@ func _test_seasons() -> void:
 	_check(Seasons.CHOICES.size() == Seasons.CHOICE_NAMES.size(), "choices and names match")
 	var settings := Settings.new()
 	_check(settings.season == "none", "default season is Normal")
+
+
+func _test_version() -> void:
+	var version := str(ProjectSettings.get_setting("application/config/version", ""))
+	var regex := RegEx.new()
+	regex.compile("^\\d+\\.\\d+\\.\\d+$")
+	_check(regex.search(version) != null, "project version looks like x.y.z: %s" % version)
+	if FileAccess.file_exists("res://export_presets.android.example.cfg"):
+		var preset := FileAccess.get_file_as_string("res://export_presets.android.example.cfg")
+		_check(preset.contains('version/name="%s"' % version), "Android preset version matches the project version")
+
+
+## Доля времени, когда «Золотой запал» включён, если золото находят непрерывно (проверка Вагонетки без ожидания).
+func _spark_uptime(cart_level: int) -> float:
+	var state := ClickerState.new()
+	state.machines["cart"] = cart_level
+	var active := 0.0
+	var step := 0.1
+	var total := 600.0
+	for i in int(total / step):
+		state.collect_find(3)
+		state.tick_boost(step)
+		if state.boost_time > 0.0:
+			active += step
+	return active / total
+
+
+func _test_cart_in_play() -> void:
+	var plain := _spark_uptime(0)
+	var full := _spark_uptime(15)
+	_check(plain > 0.2 and plain < 0.35, "Spark uptime without the Cart is about 27%%: %.2f" % plain)
+	_check(full > 0.55 and full < 0.8, "Spark uptime with the Cart at max is about 69%%: %.2f" % full)
+	_check(full > plain * 2.0, "the Cart more than doubles the Spark uptime")
 
 
 func _test_hints() -> void:

@@ -59,6 +59,7 @@ var _progression := ProgressionDialogs.new()
 var _sheet := UpgradesSheet.new()
 var _machines := MachineStrip.new()
 var _season_fx := SeasonFx.new()
+var _machine_tour: Tutorial
 var _last_tap_frame := -10
 var _mouse_finger := -1               # палец, который движок превращает в мышь (-1 — пока нет)
 var _last_button_frame := -10
@@ -279,6 +280,10 @@ func _update_prestige_button() -> void:
 
 ## Обучение: семь коротких шагов; каждый подсвечивает нужный элемент. Можно пропустить; вернуть можно в настройках.
 func _build_tutorial() -> void:
+	_machine_tour = Tutorial.new()
+	_machine_tour.peek = _peek
+	_machine_tour.panel_height = PANEL_HEIGHT
+	_ui.add_child(_machine_tour)
 	_tutorial = Tutorial.new()
 	_ui.add_child(_tutorial)
 	_tutorial.steps = [
@@ -453,8 +458,26 @@ func _apply_season() -> void:
 func _on_machine_unlocked(id: String) -> void:
 	_show_toast(Tr.t("Открыта машина: %s") % Tr.t(str(Machines.data(id)["name"])))
 	sfx.play("claim", -4.0)
-	_say_hint("first_machine" if id == "crusher" else "machine_" + id)
 	_machines.refresh()
+	# первая машина: короткий тур с подсветкой вместо обычной подсказки (подсказка тоже считается показанной)
+	if id == "crusher" and state.tutorial_done and not _perf.stress_active and state.take_hint("machine_tour"):
+		state.take_hint("first_machine")
+		_start_machine_tour()
+		return
+	_say_hint("first_machine" if id == "crusher" else "machine_" + id)
+
+
+## Тур по машинам: подсвечивает ячейку Дробилки, затем весь ряд. Затемнение касания не перехватывает.
+func _start_machine_tour() -> void:
+	if _machine_tour == null or not is_instance_valid(_machine_tour):
+		return
+	_machine_tour.steps = [
+		{"text": "Над столом появилась Дробилка: она сама сбрасывает глыбы. Нажмите на неё, чтобы улучшить.",
+				"rect": func() -> Rect2: return _machines.cell_rect("crusher"), "wait": "next"},
+		{"text": "Остальные ячейки закрыты: каждая новая зона откроет машину. Конвейер, Подрывник, Лаборатория и Лебёдка помогут по-разному.",
+				"rect": func() -> Rect2: return _machines.row_rect(), "wait": "next"},
+	]
+	_machine_tour.start()
 
 
 func _hit_stop(seconds: float) -> void:

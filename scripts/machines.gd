@@ -9,13 +9,13 @@ extends RefCounted
 ## (у Дробилки доля потока «Камнепада», у Конвейера сдвиг порога руды, у Подрывника секунды периода, у Лебёдки доля времени похода).
 const LIST := [
 	{"id": "crusher", "name": "Дробилка", "icon": "crusher", "text": "Сама сбрасывает на стол свои глыбы.",
-			"unlock_rain": 5, "unlock_zone": -1, "base_cost": 3000.0, "growth": 1.4, "max_level": 20, "step": 0.03},
+			"unlock_rain": 5, "unlock_zone": -1, "base_cost": 1500.0, "growth": 1.4, "max_level": 20, "step": 0.03},
 	{"id": "conveyor", "name": "Конвейер", "icon": "conveyor", "text": "Везёт на стол руду: в глыбах чаще попадаются самородки.",
-			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 3.0e4, "growth": 1.25, "max_level": 15, "step": 0.01},
+			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 1.5e4, "growth": 1.25, "max_level": 15, "step": 0.01},
 	{"id": "lab", "name": "Лаборатория", "icon": "lab", "text": "Из найденной породы варит алмазы: капля за каплей, даже пока вы заняты другим.",
-			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 1.6e4, "growth": 1.15, "max_level": 20, "step": 25.0},
+			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 8.0e3, "growth": 1.15, "max_level": 20, "step": 25.0},
 	{"id": "blaster", "name": "Подрывник", "icon": "blaster", "text": "Сам взрывает малый заряд: монеты за взрыв, чем выше уровень, тем чаще.",
-			"unlock_rain": 0, "unlock_zone": 2, "base_cost": 2.8e6, "growth": 1.12, "max_level": 20, "step": 1.9},
+			"unlock_rain": 0, "unlock_zone": 2, "base_cost": 1.4e6, "growth": 1.12, "max_level": 20, "step": 1.9},
 	{"id": "winch", "name": "Лебёдка", "icon": "winch", "text": "Тянет шахтёров быстрее: походы короче, офлайн-доход копится дольше.",
 			"unlock_rain": 0, "unlock_zone": 3, "base_cost": 1.35e9, "growth": 1.25, "max_level": 12, "step": 0.04},
 	{"id": "cart", "name": "Вагонетка", "icon": "cart", "text": "Возит золото: «Золотой запал» длится дольше и включается чаще.",

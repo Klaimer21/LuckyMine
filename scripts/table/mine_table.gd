@@ -58,6 +58,7 @@ const VISUAL_RATES := [10.0, 20.0, 35.0]       # глыб в секунду на
 const PARTICLE_RATIOS := [0.35, 0.7, 1.0]      # доля частиц в выбросе по качеству
 
 ## Руда по ценности выпавшего числа (доля от максимума): камень, медь, железо, золото, кристалл.
+const FIRST_DIAMOND_PITY := 240.0           # секунд игры, после которых первая алмазная жила гарантирована
 const ORE_LIMITS := [0.75, 0.88, 0.96]        # доля от максимума: медь, железо, золото (алмаз — только жила); руда в ~25% глыб
 ## Цвета руды: камень, медь, железо, золото, кристалл (алмаз).
 const ORE_COLORS := [Color(0.64, 0.65, 0.62), Color(0.78, 0.47, 0.30), Color(0.50, 0.58, 0.68),
@@ -151,6 +152,7 @@ var _rng := RandomNumberGenerator.new()
 var _carry := 0.0
 var _shake := 0.0
 var _crusher_carry := 0.0
+var _pity_used := false                # гарантированная первая алмазная жила уже выпала в этой сессии
 var _crusher_x := -2.6 * 0.5            # колонка стола, над которой стоит Дробилка (мировая x; задаёт полоса машин)
 var _blaster_timer := 0.0
 var _rock_materials: Array[StandardMaterial3D] = []
@@ -458,6 +460,11 @@ func _request(x: float, z: float, weight: float, by_hand: bool) -> void:
 	elif _rng.randf() < state.lucky_rock_chance():
 		rock.ore = maxi(rock.ore, 3)                                  # навык «Фарт шахтёра»: счастливая глыба
 		rock.payout *= 5.0
+	# первый алмаз «из жалости»: пассивный игрок, не поймавший ни одной алмазной жилы за FIRST_DIAMOND_PITY секунд, получает её гарантированно
+	if int(state.finds[4]) == 0 and not _pity_used and state.play_seconds >= FIRST_DIAMOND_PITY:
+		_pity_used = true
+		rock.ore = 4
+		rock.payout *= 3.0
 	rock.vy0 = -14.0 if by_hand else -2.0
 	rock.y0 = _start_height(rock.z) + rock.size
 	var drop := rock.y0 - rock.size * 0.5

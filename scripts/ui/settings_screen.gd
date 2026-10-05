@@ -188,7 +188,7 @@ func rebuild() -> void:
 	var reset := UiTheme.make_button("Сбросить прогресс", false, 30)
 	reset.pressed.connect(func() -> void: reset_requested.emit())
 	_content.add_child(reset)
-	_content.add_child(UiTheme.make_label("LuckyMine · версия 0.4", 24, UiTheme.MUTE))
+	_content.add_child(UiTheme.make_label(Tr.t("LuckyMine · версия %s") % str(ProjectSettings.get_setting("application/config/version", "0")), 24, UiTheme.MUTE))
 
 
 ## Заголовок раздела настроек: линия и название латунью.
