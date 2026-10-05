@@ -40,22 +40,29 @@ func show_daily() -> void:
 		var box := VBoxContainer.new()
 		box.add_theme_constant_override("separation", 4)
 		cell.add_child(box)
+		var claimed_before := i < slot          # дни серии, которые уже получены
 		var day_label := UiTheme.make_label(str(i + 1), 24, UiTheme.MUTE)
 		day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(day_label)
 		var icon_row := CenterContainer.new()
 		icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var kind := "coin" if reward.has("coins") else "gem"
-		icon_row.add_child(Icon.new().setup(kind, UiTheme.BRASS if kind == "coin" else Color(0.55, 0.86, 0.90), 36))
+		if claimed_before:
+			icon_row.add_child(Icon.new().setup("check", UiTheme.BRASS_DIM, 36))
+		else:
+			icon_row.add_child(Icon.new().setup(kind, UiTheme.BRASS if kind == "coin" else Color(0.55, 0.86, 0.90), 36))
 		box.add_child(icon_row)
 		var text := ""
+		if reward.has("coins"):
+			text = Tr.t("монеты")
 		if reward.has("diamonds"):
 			text = "+%d" % int(reward["diamonds"])
 		if reward.has("points"):
 			text += " +" + Tr.t("очко")
 		if reward.has("dynamite"):
 			text += " +%d " % int(reward["dynamite"]) + Tr.t("дин.")
-		var amount := UiTheme.make_label(text, 22, UiTheme.TEXT)
+		# подпись переносится по словам: все семь ячеек одной ширины, а не по длине текста
+		var amount := UiTheme.make_text(text.strip_edges(), 24, UiTheme.MUTE if claimed_before else UiTheme.TEXT)
 		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(amount)
 		days.add_child(cell)

@@ -260,7 +260,7 @@ func _update_prestige_button() -> void:
 		_prestige_hinted = true
 		_show_toast(Tr.t("Открыта «Новая шахта»"))
 		_say_hint("prestige_ready", "«Новая шахта» сбрасывает монеты и улучшения, но даёт жилы: доход растёт навсегда, а ещё очки навыков. Лучше жать, когда кнопка латунная.")
-	_prestige_button.text = Tr.t("Новая шахта") + "  +%d" % pending
+	_prestige_button.text = Tr.t("Новая шахта") + "  +" + NumberFormat.short(float(pending))
 	UiTheme.style_key(_prestige_button, "brass" if recommended else "dark")
 
 
@@ -622,6 +622,14 @@ func _build_top() -> void:
 	var journal_icon := Icon.new().setup("journal", UiTheme.MUTE, 34)
 	journal_icon.position = Vector2(16, 31)
 	_journal_button.add_child(journal_icon)
+	# число на кнопке — алмазы: рядом с ним алмаз, чтобы было понятно, что это
+	var journal_gem := Icon.new().setup("gem", Color(0.55, 0.86, 0.90), 30)
+	_journal_button.add_child(journal_gem)
+	_journal_button.draw.connect(func() -> void:
+			var font := _journal_button.get_theme_font("font")
+			var text_width := font.get_string_size(_journal_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _journal_button.get_theme_font_size("font_size")).x
+			var right_margin := _journal_button.get_theme_stylebox("normal").get_content_margin(SIDE_RIGHT)
+			journal_gem.position = Vector2(_journal_button.size.x - right_margin - text_width - 38.0, (_journal_button.size.y - 30.0) * 0.5))
 	_journal_button.pressed.connect(func() -> void:
 			_journal.open()
 			_say_hint("journal_first", "Походы идут по реальному времени, даже пока игра закрыта: отправьте шахтёров и возвращайтесь за добычей."))

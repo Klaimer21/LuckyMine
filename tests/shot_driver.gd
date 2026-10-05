@@ -89,7 +89,18 @@ func _process(delta: float) -> bool:
 			_main._perf.start_stress()],
 		[15.0, func() -> void: _shot("13_stress")],
 		[30.0, func() -> void: _shot("14_report")],
-		[30.1, func() -> void: quit()],
+		[30.1, func() -> void:
+			for modal in _main.find_children("*", "Modal", true, false):
+				modal.close()
+			_main._journal.visible = false
+			_main._settings_screen.visible = false],
+		[30.6, func() -> void:
+			_main.state.start_rush(15.0)
+			_main._show_toast("Золотая лихорадка ×7")],
+		[31.4, func() -> void: _shot("18_boost_toast")],
+		[31.5, func() -> void: _main._tutorial.start()],
+		[32.3, func() -> void: _shot("19_tutorial")],
+		[32.4, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()
