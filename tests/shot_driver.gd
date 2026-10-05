@@ -129,7 +129,23 @@ func _process(delta: float) -> bool:
 			_main._settings_screen.visible = false
 			_main._machines._open_card("lab")],
 		[34.9, func() -> void: _shot("22_machine_card")],
-		[35.0, func() -> void: quit()],
+		[35.0, func() -> void:
+			for modal in _main.find_children("*", "Modal", true, false):
+				modal.close()
+			_main.state.total_earned = 0.0
+			_main.state.coins = 2.0e5
+			_main._table.set_biome(1)
+			_main.settings.season = "winter"
+			_main._apply_season()],
+		[38.0, func() -> void: _shot("23_winter")],
+		[38.1, func() -> void:
+			_main.settings.season = "halloween"
+			_main._apply_season()],
+		[41.0, func() -> void: _shot("24_halloween")],
+		[41.1, func() -> void:
+			_main._settings_screen.open()],
+		[41.8, func() -> void: _shot("25_settings_season")],
+		[41.9, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()

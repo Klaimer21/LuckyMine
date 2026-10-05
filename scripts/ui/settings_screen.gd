@@ -161,6 +161,9 @@ func rebuild() -> void:
 	var styles_hint := UiTheme.make_label("Новые породы: награды за достижения и покупка за алмазы в журнале.", 24, UiTheme.MUTE)
 	styles_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(styles_hint)
+	_add_choice("Сезон", Seasons.CHOICE_NAMES, maxi(0, Seasons.CHOICES.find(settings.season)), true, func(i: int) -> void:
+			settings.season = Seasons.CHOICES[i]
+			_changed())
 	_add_toggle("Числа при ударе", settings.popups, func(on: bool) -> void:
 			settings.popups = on
 			_changed())

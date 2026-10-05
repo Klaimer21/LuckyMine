@@ -58,6 +58,7 @@ var _rewards := Rewards.new()
 var _progression := ProgressionDialogs.new()
 var _sheet := UpgradesSheet.new()
 var _machines := MachineStrip.new()
+var _season_fx := SeasonFx.new()
 var _last_tap_frame := -10
 var _mouse_finger := -1               # палец, который движок превращает в мышь (-1 — пока нет)
 var _last_button_frame := -10
@@ -439,6 +440,15 @@ func _on_ore_collected(ore: int) -> void:
 
 
 ## Короткая «заморозка» кадра на редкой находке: вес событию. Время возвращается по таймеру реального времени.
+## Сезон оформления: оттенок мира, частицы и музыка (только внешний вид, наград нет, поэтому часы устройства ничего не дают).
+func _apply_season() -> void:
+	var date := Time.get_date_dict_from_system()
+	var id := Seasons.active(settings.season, int(date["month"]), int(date["day"]))
+	_table.set_season_tint(Seasons.tint(id))
+	_season_fx.apply(id, settings.reduce_motion, settings.quality)
+	music.set_season(id)
+
+
 ## Открылась машина: сообщение, подсказка, ячейка оживает.
 func _on_machine_unlocked(id: String) -> void:
 	_show_toast(Tr.t("Открыта машина: %s") % Tr.t(str(Machines.data(id)["name"])))
@@ -525,6 +535,8 @@ func _build_ui() -> void:
 	tap_area.mouse_filter = Control.MOUSE_FILTER_STOP
 	tap_area.gui_input.connect(_on_tap_input)
 	_ui.add_child(tap_area)
+	_season_fx = SeasonFx.new()
+	_ui.add_child(_season_fx)
 
 	_fx = FxLayer.new()
 	_ui.add_child(_fx)
@@ -594,7 +606,9 @@ func _build_ui() -> void:
 			_tutorial.start())
 	_settings_screen.settings_changed.connect(_perf.refresh_fps_visibility)
 	_settings_screen.settings_changed.connect(func() -> void: _fx.reduced = settings.reduce_motion)
+	_settings_screen.settings_changed.connect(_apply_season)
 	_fx.reduced = settings.reduce_motion
+	_apply_season()
 	_refresh()
 
 

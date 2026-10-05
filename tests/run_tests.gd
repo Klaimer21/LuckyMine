@@ -26,6 +26,7 @@ func _init() -> void:
 	_test_machines_stage1()
 	_test_machines_stage2()
 	_test_machine_tiers()
+	_test_seasons()
 	_test_hints()
 	_test_plurals()
 	_test_time()
@@ -431,6 +432,23 @@ func _test_machine_tiers() -> void:
 	_check(Machines.tier_for(6, 15) == 1 and Machines.tier_for(12, 15) == 2 and Machines.tier_for(5, 12) == 1 and Machines.tier_for(10, 12) == 2, "tiers scale with the max level")
 	_check(Machines.tier_for(5, 0) == 0, "no division by zero for a zero max level")
 	_check(Machines.TIER_NAMES.size() == 3 and Machines.TIER_COLORS.size() == 3, "three looks defined")
+
+
+func _test_seasons() -> void:
+	_check(Seasons.for_date(12, 1) == "winter" and Seasons.for_date(12, 31) == "winter" and Seasons.for_date(1, 15) == "winter" and Seasons.for_date(2, 28) == "winter", "winter covers Dec to Feb")
+	_check(Seasons.for_date(3, 1) == "none" and Seasons.for_date(6, 15) == "none" and Seasons.for_date(11, 30) == "none", "no season in spring, summer or late autumn")
+	_check(Seasons.for_date(10, 20) == "halloween" and Seasons.for_date(10, 31) == "halloween" and Seasons.for_date(11, 3) == "halloween", "Halloween window")
+	_check(Seasons.for_date(10, 19) == "none" and Seasons.for_date(11, 4) == "none", "outside the Halloween window")
+	_check(Seasons.active("auto", 12, 25) == "winter" and Seasons.active("auto", 7, 1) == "none", "auto follows the date")
+	_check(Seasons.active("halloween", 7, 1) == "halloween" and Seasons.active("none", 12, 25) == "none", "manual choice ignores the date")
+	_check(Seasons.active("nonsense", 12, 25) == "none" and Seasons.active("", 12, 25) == "none", "unknown setting means Normal")
+	_check(Seasons.tint("none") == Color.WHITE and Seasons.tint("winter") != Color.WHITE, "tint of a season")
+	_check(Seasons.music_path("none") == "" and Seasons.music_path("winter").ends_with("music_winter.wav"), "season music path")
+	for id in ["winter", "halloween"]:
+		_check(ResourceLoader.exists(Seasons.music_path(id)), "season music file exists: %s" % id)
+	_check(Seasons.CHOICES.size() == Seasons.CHOICE_NAMES.size(), "choices and names match")
+	var settings := Settings.new()
+	_check(settings.season == "none", "default season is Normal")
 
 
 func _test_hints() -> void:

@@ -63,7 +63,7 @@ func _process(_delta: float) -> bool:
 
 func _act() -> void:
 	var state: ClickerState = _main.state
-	match _rng.randi_range(0, 25):
+	match _rng.randi_range(0, 27):
 		0, 1, 2, 3, 4, 5, 6, 7:
 			var list: Array = []
 			_buttons(root, list)
@@ -112,6 +112,10 @@ func _act() -> void:
 			_main._table.summon_boss(_rng.randi_range(0, 6))
 		19:
 			_main._table.detonate()
+		26, 27:
+			_main.settings.season = Seasons.CHOICES[_rng.randi() % Seasons.CHOICES.size()]
+			_main.settings.reduce_motion = _rng.randf() < 0.3
+			_main._apply_season()
 		24, 25:
 			state.levels["rain"] = maxi(int(state.levels["rain"]), _rng.randi_range(0, 8))
 			state.update_machine_unlocks()

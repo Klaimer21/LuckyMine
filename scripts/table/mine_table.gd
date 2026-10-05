@@ -139,6 +139,7 @@ var _floor_material: StandardMaterial3D
 var _floor_gradient: Gradient
 var _stone_base := Color.WHITE
 var _planet_tint := Color.WHITE
+var _season_tint := Color.WHITE        # сезонный оттенок поверх планетного (Seasons)
 var _golden: Rock
 var _planet := 0
 var _boss: Boss
@@ -188,8 +189,14 @@ func set_planet(planet: int) -> void:
 	_planet = planet % Biomes.PLANETS.size()
 	_planet_tint = Biomes.planet_tint(planet)
 	if _backdrop_root != null:
-		_backdrop_root.modulate = _planet_tint
+		_backdrop_root.modulate = _planet_tint * _season_tint
 	set_biome(_biome)
+
+
+## Сезон: общий оттенок мира (пол, породы, свет, фон) поверх планетного.
+func set_season_tint(tint: Color) -> void:
+	_season_tint = tint
+	set_planet(_planet)
 
 
 func set_biome(index: int, animate := false) -> void:
@@ -198,13 +205,13 @@ func set_biome(index: int, animate := false) -> void:
 	if _floor_gradient != null:
 		var floor_colors := PackedColorArray()
 		for c in data["floor"]:
-			floor_colors.append((c as Color) * _planet_tint)
+			floor_colors.append((c as Color) * _planet_tint * _season_tint)
 		_floor_gradient.colors = floor_colors
 	var zone_field := FIELD_TEXTURE_ZONE % _biome
 	if ResourceLoader.exists(zone_field):
 		_floor_material.albedo_texture = load(zone_field) as Texture2D
-	_sun.light_color = (data["sun"] as Color).lerp(_planet_tint, 0.25)
-	_stone_base = (data["tint"] as Color) * _planet_tint
+	_sun.light_color = (data["sun"] as Color).lerp(_planet_tint * _season_tint, 0.25)
+	_stone_base = (data["tint"] as Color) * _planet_tint * _season_tint
 	_refresh_palette()
 	_apply_backdrop(not animate)
 	if animate:
@@ -270,7 +277,7 @@ func _apply_backdrop(instant := false) -> void:
 	if path == "":
 		path = _find_image(BACKGROUND_BASE)
 	# свой фон планеты уже нужного цвета, остальные фоны красим оттенком планеты
-	_backdrop_root.modulate = Color.WHITE if own else _planet_tint
+	_backdrop_root.modulate = (Color.WHITE if own else _planet_tint) * _season_tint
 	var texture: Texture2D = load(path) as Texture2D if path != "" else null
 	var back := _backdrops[1 - _backdrop_front]
 	var front := _backdrops[_backdrop_front]

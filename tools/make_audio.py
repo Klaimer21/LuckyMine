@@ -141,7 +141,13 @@ SPECS = [
     {"root": 38, "scale": [0, 2, 3, 5, 7, 8, 11], "prog": [0, 5, 3, 6], "bpm": 100, "melody": "low", "density": 0.18, "perc": "heavy", "texture": 0.020, "pad": 0.5, "seed": 6},
     {"root": 36, "scale": [0, 2, 3, 5, 7, 8, 10], "prog": [0, 0, 5, 4], "bpm": 60, "melody": "glass", "density": 0.12, "perc": "heart", "texture": 0.015, "pad": 0.7, "seed": 7},
 ]
+# Сезонные петли: music_<имя>.wav. Зима: светлый колокольный строй, редкие ноты, ветер. Хэллоуин: тревожный лад, низкое сердцебиение.
+SEASON_SPECS = {
+    "winter": {"root": 62, "scale": [0, 2, 4, 7, 9], "prog": [0, 3, 1, 4], "bpm": 68, "melody": "bell", "density": 0.26, "perc": "sleigh", "texture": 0.014, "pad": 0.6, "seed": 21},
+    "halloween": {"root": 45, "scale": [0, 1, 4, 5, 7, 8, 11], "prog": [0, 5, 1, 4], "bpm": 78, "melody": "glass", "density": 0.18, "perc": "heart", "texture": 0.028, "pad": 0.7, "seed": 22},
+}
 MELODY = {
+    "bell": [(1, 0.6, 2.4), (2.76, 0.32, 3.4), (5.4, 0.2, 5.0), (8.93, 0.1, 8.0)],
     "marimba": [(1, 0.7, 6), (3.9, 0.25, 14), (9.2, 0.1, 30)],
     "kalimba": [(1, 0.6, 7), (5.4, 0.3, 18)],
     "metal": [(1, 0.5, 5), (2.76, 0.3, 8), (5.4, 0.2, 12), (8.93, 0.1, 18)],
@@ -213,6 +219,10 @@ def build_track(spec, index):
             if beat % 2 == 0:
                 add(t, tone(sr, 48, 0.3, [(1, 1.0, 12)]), 0.28)
                 add(t + spb * 0.33, tone(sr, 44, 0.3, [(1, 1.0, 12)]), 0.20)
+        elif perc == "sleigh":
+            if beat % 2 == 0:
+                for k in range(3):
+                    add(t + spb * 0.16 * k, noise(sr, 0.05, beat * 3 + k + 70, 0.97, 60.0), 0.05)
         elif perc == "shaker":
             add(t + spb / 2, noise(sr, 0.07, beat + 60, 0.9, 50.0), 0.06)
         elif perc == "hat":
@@ -238,13 +248,22 @@ def build_track(spec, index):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    make_sfx()
+    if "seasons" not in sys.argv[1:]:
+        make_sfx()
     if "sfx" in sys.argv[1:]:
         print("звуки готовы:", OUT)
+        return
+    if "seasons" in sys.argv[1:]:
+        for name, spec in SEASON_SPECS.items():
+            build_track(spec, name)
+            print("музыка сезона", name, "готова")
         return
     for i, spec in enumerate(SPECS):
         build_track(spec, i)
         print("музыка", i, "готова")
+    for name, spec in SEASON_SPECS.items():
+        build_track(spec, name)
+        print("музыка сезона", name, "готова")
     print("звуки готовы:", OUT)
 
 

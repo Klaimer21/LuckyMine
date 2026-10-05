@@ -20,6 +20,7 @@ var keep_awake := true           # не гасить экран на телеф�
 var render_scale := 1.0          # доля разрешения 3D-сцены
 var fps_cap := 60
 var popups := true
+var season := "none"               # сезон оформления: none, auto, winter, halloween (только внешний вид)
 var reduce_motion := false       # без тряски камеры, вспышек и «заморозки» кадра: для тех, кого укачивает
 var show_fps := false
 var sound_on := true
@@ -51,6 +52,8 @@ func load_settings() -> void:
 		fps_cap = 60
 	popups = bool(config.get_value("main", "popups", popups))
 	reduce_motion = bool(config.get_value("main", "reduce_motion", reduce_motion))
+	var saved_season := str(config.get_value("main", "season", season))
+	season = saved_season if Seasons.CHOICES.has(saved_season) else "none"
 	show_fps = bool(config.get_value("main", "show_fps", show_fps))
 	sound_on = bool(config.get_value("main", "sound_on", sound_on))
 	music_volume = clampf(float(config.get_value("main", "music_volume", music_volume)), 0.0, 1.0)
@@ -71,6 +74,7 @@ func save() -> void:
 	config.set_value("main", "fps_cap", fps_cap)
 	config.set_value("main", "popups", popups)
 	config.set_value("main", "reduce_motion", reduce_motion)
+	config.set_value("main", "season", season)
 	config.set_value("main", "show_fps", show_fps)
 	config.set_value("main", "sound_on", sound_on)
 	config.set_value("main", "music_volume", music_volume)
