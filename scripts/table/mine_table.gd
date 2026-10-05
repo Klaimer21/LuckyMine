@@ -18,6 +18,7 @@ signal golden_missed
 signal biome_changed(index: int)
 signal ore_collected(ore: int)                 # находка подобрана (самородок/алмаз улетел или рассыпался сразу)
 signal gem_spawned(screen_pos: Vector2, ore: int)  # из камня вылетела руда: блик
+signal blasted                                   # Подрывник сделал малый взрыв (звук)
 signal detonated(screen_pos: Vector2)           # взрыв динамита: волна и вспышка
 signal ore_found(ore: int)                     # выпала редкая руда (золото, кристалл)
 
@@ -149,6 +150,8 @@ var _rng := RandomNumberGenerator.new()
 var _carry := 0.0
 var _shake := 0.0
 var _crusher_carry := 0.0
+var _crusher_x := -2.6 * 0.5            # колонка стола, над которой стоит Дробилка (мировая x; задаёт полоса машин)
+var _blaster_timer := 0.0
 var _rock_materials: Array[StandardMaterial3D] = []
 var _stone_process: Array[ParticleProcessMaterial] = []
 var _gem_materials: Array[StandardMaterial3D] = []
@@ -294,11 +297,22 @@ func _rush_active() -> bool:
 ## Где стол на экране: прямоугольник по углам стола (для подсветки в обучении).
 ## Где над столом стоит Дробилка (мировая координата x) и в какой точке экрана; z — дальний от игрока край стола.
 func crusher_world_x() -> float:
-	return -AREA.x * 0.5
+	return _crusher_x
 
 
-func crusher_screen_x() -> float:
-	return camera.unproject_position(Vector3(crusher_world_x(), 0.0, _top_z())).x
+## Полоса машин сообщает, над какой точкой экрана стоит Дробилка: глыбы падают из этой колонки.
+func set_crusher_screen_x(screen_x: float) -> void:
+	var z := _top_z()
+	var origin := camera.unproject_position(Vector3(0.0, 0.0, z)).x
+	var unit := camera.unproject_position(Vector3(1.0, 0.0, z)).x - origin
+	if absf(unit) > 0.001:
+		_crusher_x = clampf((screen_x - origin) / unit, -AREA.x * 0.9, AREA.x * 0.9)
+
+
+## Заряд Подрывника от 0 до 1 (для индикатора в ячейке).
+func blaster_charge() -> float:
+	var interval := state.blaster_interval()
+	return 0.0 if interval <= 0.0 else clampf(1.0 - _blaster_timer / interval, 0.0, 1.0)
 
 
 func _top_z() -> float:
@@ -387,6 +401,16 @@ func _process(delta: float) -> void:
 		while _crusher_carry >= 1.0:
 			_crusher_carry -= 1.0
 			_request(crusher_world_x() + _rng.randf_range(-0.35, 0.35), _top_z() * _rng.randf_range(0.45, 0.95), crusher_weight, false)
+	var blaster_interval := state.blaster_interval()
+	if blaster_interval > 0.0 and auto_throw and stress_rate <= 0.0:
+		if _blaster_timer <= 0.0 or _blaster_timer > blaster_interval:
+			_blaster_timer = blaster_interval
+		_blaster_timer -= delta
+		if _blaster_timer <= 0.0:
+			_blast()
+			_blaster_timer = blaster_interval
+	elif blaster_interval <= 0.0:
+		_blaster_timer = 0.0
 	if stress_rate <= 0.0 and _golden == null:
 		_golden_timer -= delta
 		if _golden_timer <= 0.0:
@@ -414,7 +438,7 @@ func _request(x: float, z: float, weight: float, by_hand: bool) -> void:
 	var ratio := float(value) / float(state.max_face())
 	rock.ore = 0
 	for i in ORE_LIMITS.size():
-		if ratio >= ORE_LIMITS[i]:
+		if ratio >= ORE_LIMITS[i] - state.ore_shift():
 			rock.ore = i + 1
 	if weight > 1.0:
 		rock.ore = maxi(rock.ore, 2)       # укрупнённая глыба — всегда с рудой
@@ -570,6 +594,18 @@ func _hit_golden() -> void:
 	landed.emit(state.average_value() * 25.0, true)
 	_shake = 1.0
 	golden_hit.emit()
+
+
+## Малый взрыв Подрывника: вспышка и награда в несколько секунд дохода; глыбы в воздухе, находки и динамит не трогает.
+func _blast() -> void:
+	var bonus := state.base_income_per_second() * Machines.BLASTER_SECONDS
+	for i in 4 + 2 * quality:
+		_burst_at(Vector3(_rng.randf_range(-AREA.x, AREA.x), 0.4, _rng.randf_range(-AREA.y, AREA.y)), 3.0)
+	detonated.emit(camera.unproject_position(Vector3(0.0, 0.4, 0.0)))
+	landed.emit(bonus, true)
+	_popup("+" + NumberFormat.short(bonus), Vector3(0.0, 1.2, 0.0), UiTheme.BRASS, true)
+	_shake = maxf(_shake, 0.7)
+	blasted.emit()
 
 
 ## «Динамит»: всё, что в воздухе, разбивается сразу; находки на столе подбираются; плюс крупная награда.

@@ -20,6 +20,10 @@ func _initialize() -> void:
 	_main.state.levels["rain"] = 12                  # открыта Дробилка
 	_main.state.machines["crusher"] = 4
 	_main.state.machines_unlocked["crusher"] = true
+	_main.state.machines_unlocked["conveyor"] = true
+	_main.state.machines_unlocked["blaster"] = true
+	_main.state.machines["conveyor"] = 3
+	_main.state.machines["blaster"] = 5
 	_main.state.daily_day = ClickerState.today()      # без окна ежедневной награды в кадре
 
 
@@ -120,7 +124,7 @@ func _process(delta: float) -> bool:
 			for modal in _main.find_children("*", "Modal", true, false):
 				modal.close()
 			_main._settings_screen.visible = false
-			_main._machines._open_card("crusher")],
+			_main._machines._open_card("blaster")],
 		[34.9, func() -> void: _shot("22_machine_card")],
 		[35.0, func() -> void: quit()],
 	]

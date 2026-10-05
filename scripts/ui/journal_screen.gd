@@ -171,7 +171,7 @@ func _process(delta: float) -> void:
 	if _expedition_label != null and state.expedition_active() and not finished:
 		var remaining := state.expedition_remaining()
 		_expedition_label.text = Tr.t("Осталось: %s") % _format_time(remaining)
-		var total: float = float(Retention.EXPEDITIONS[state.expedition_type]["hours"]) * 3600.0
+		var total: float = state.expedition_total_seconds(state.expedition_type)
 		_expedition_bar.value = 1.0 - remaining / total
 
 
@@ -182,6 +182,13 @@ static func _format_time(seconds: float) -> String:
 	if hours > 0:
 		return "%d:%02d:%02d" % [hours, minutes, total % 60]
 	return "%d:%02d" % [minutes, total % 60]
+
+
+## Длительность похода в часах: целая или с десятой долей, если Лебёдка сократила поход.
+func _hours_text(hours: float) -> String:
+	if is_equal_approx(hours, roundf(hours)):
+		return Tr.t("%d ч") % int(hours)
+	return Tr.t("%s ч") % ("%.1f" % hours)
 
 
 ## Ожидаемая добыча похода (с бонусом мета-улучшения «Снаряжение походов»), как её выдаст claim_expedition().
@@ -253,7 +260,7 @@ func _build_expeditions() -> void:
 		texts.add_theme_constant_override("separation", 0)
 		row.add_child(texts)
 		texts.add_child(UiTheme.make_label(data["name"], 34, UiTheme.TEXT))
-		var detail := UiTheme.make_text(Tr.t("%d ч") % int(data["hours"]) + " · " + _expedition_loot(data), 24, UiTheme.MUTE)
+		var detail := UiTheme.make_text(_hours_text(float(data["hours"]) * state.expedition_time_factor()) + " · " + _expedition_loot(data), 24, UiTheme.MUTE)
 		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		texts.add_child(detail)
 		var go := UiTheme.make_key("Отправить", 28, "brass")

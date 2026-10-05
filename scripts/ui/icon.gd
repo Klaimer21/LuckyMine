@@ -113,6 +113,24 @@ func _draw() -> void:
 			draw_rect(Rect2(s * 0.30, s * 0.82, s * 0.1, s * 0.1), color)
 			draw_rect(Rect2(s * 0.50, s * 0.86, s * 0.1, s * 0.1), color)
 			draw_rect(Rect2(s * 0.68, s * 0.80, s * 0.1, s * 0.1), color)
+		"conveyor":
+			draw_rect(Rect2(s * 0.08, s * 0.46, s * 0.84, s * 0.22), color, false, width)
+			draw_circle(Vector2(s * 0.2, s * 0.57), s * 0.07, color)
+			draw_circle(Vector2(s * 0.8, s * 0.57), s * 0.07, color)
+			draw_rect(Rect2(s * 0.3, s * 0.3, s * 0.12, s * 0.12), color)
+			draw_rect(Rect2(s * 0.54, s * 0.26, s * 0.14, s * 0.16), color)
+			draw_polyline(_pts(s, [[0.36, 0.82], [0.64, 0.82], [0.56, 0.76]]), color, width)
+		"blaster":
+			draw_rect(Rect2(s * 0.14, s * 0.5, s * 0.72, s * 0.36), color, false, width)
+			draw_line(Vector2(s * 0.5, s * 0.5), Vector2(s * 0.5, s * 0.22), color, width)
+			draw_line(Vector2(s * 0.32, s * 0.2), Vector2(s * 0.68, s * 0.2), color, width * 1.4)
+			draw_line(Vector2(s * 0.14, s * 0.66), Vector2(s * 0.86, s * 0.66), color, width)
+		"winch":
+			draw_arc(Vector2(s * 0.5, s * 0.3), s * 0.2, 0.0, TAU, 24, color, width)
+			draw_circle(Vector2(s * 0.5, s * 0.3), s * 0.05, color)
+			draw_line(Vector2(s * 0.3, s * 0.3), Vector2(s * 0.3, s * 0.76), color, width)
+			draw_polyline(_pts(s, [[0.3, 0.76], [0.3, 0.9], [0.4, 0.9], [0.4, 0.84]]), color, width)
+			draw_line(Vector2(s * 0.12, s * 0.08), Vector2(s * 0.88, s * 0.08), color, width)
 		"dynamite":
 			draw_rect(Rect2(s * 0.3, s * 0.38, s * 0.4, s * 0.52), color, false, width)
 			draw_line(Vector2(s * 0.3, s * 0.56), Vector2(s * 0.7, s * 0.56), color, width)

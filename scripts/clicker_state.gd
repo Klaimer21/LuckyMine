@@ -69,7 +69,7 @@ var ending_seen := false
 var veins := 0                     # жилы: постоянный множитель дохода
 var prestiges := 0
 var levels := {"rain": 0, "tap": 0, "faces": 0, "mult": 0}
-var machines := {"crusher": 0}        # уровни машин (сбрасываются с «Новой шахтой»)
+var machines := {"crusher": 0, "conveyor": 0, "blaster": 0, "winch": 0}   # уровни машин (сбрасываются с «Новой шахтой»)
 var machines_unlocked := {}            # id -> true: открытые машины (остаются навсегда)
 var last_seen := 0.0
 var auto_throw := true
@@ -125,6 +125,35 @@ func total_rock_rate() -> float:
 	return rain_rate() + crusher_rate()
 
 
+## Конвейер: на сколько опускаются пороги ценности, с которых в глыбе есть руда (доля от максимума).
+func ore_shift() -> float:
+	return float(Machines.data("conveyor")["step"]) * machine_level("conveyor")
+
+
+## Подрывник: секунд между малыми взрывами (0 — не куплен).
+func blaster_interval() -> float:
+	var level := machine_level("blaster")
+	if level < 1:
+		return 0.0
+	return maxf(Machines.BLASTER_MIN_PERIOD, Machines.BLASTER_BASE_PERIOD - float(Machines.data("blaster")["step"]) * level)
+
+
+## Доля дохода от глыб, которую в среднем добавляют взрывы Подрывника.
+func blaster_share() -> float:
+	var interval := blaster_interval()
+	return Machines.BLASTER_SECONDS / interval if interval > 0.0 else 0.0
+
+
+## Лебёдка: во сколько раз походы короче обычного.
+func expedition_time_factor() -> float:
+	return 1.0 - float(Machines.data("winch")["step"]) * machine_level("winch")
+
+
+## Длительность похода типа index с учётом Лебёдки.
+func expedition_total_seconds(index: int) -> float:
+	return float(Retention.EXPEDITIONS[index]["hours"]) * 3600.0 * expedition_time_factor()
+
+
 func rocks_per_throw() -> int:
 	return 1 + levels["tap"]
 
@@ -143,8 +172,13 @@ func average_value() -> float:
 	return (1.0 + max_face()) / 2.0 * multiplier()
 
 
-func income_per_second() -> float:
+## Доход от глыб без взрывов Подрывника (по нему же считается награда взрыва).
+func base_income_per_second() -> float:
 	return total_rock_rate() * average_value()
+
+
+func income_per_second() -> float:
+	return base_income_per_second() * (1.0 + blaster_share())
 
 
 func cost(key: String) -> float:
@@ -309,12 +343,21 @@ func machine_unlocked(id: String) -> bool:
 	return machines_unlocked.has(id)
 
 
+## Выполнено ли условие открытия машины: достаточно уровня «Камнепада» или зоны шахты.
+func _machine_condition_met(entry: Dictionary) -> bool:
+	var rain_need := int(entry["unlock_rain"])
+	var zone_need := int(entry["unlock_zone"])
+	if rain_need > 0 and int(levels["rain"]) >= rain_need:
+		return true
+	return zone_need >= 0 and Biomes.index_for(total_earned, planet_scale()) >= zone_need
+
+
 ## Открывает машины, условия которых выполнены; возвращает только что открытые (для сообщения игроку).
 func update_machine_unlocks() -> Array:
 	var opened: Array = []
 	for entry in Machines.LIST:
 		var id := str(entry["id"])
-		if not machines_unlocked.has(id) and int(levels["rain"]) >= int(entry["unlock_rain"]):
+		if not machines_unlocked.has(id) and _machine_condition_met(entry):
 			machines_unlocked[id] = true
 			opened.append(id)
 	return opened
@@ -489,7 +532,7 @@ func expedition_active() -> bool:
 func expedition_remaining() -> float:
 	if not expedition_active():
 		return 0.0
-	var total := float(Retention.EXPEDITIONS[expedition_type]["hours"]) * 3600.0
+	var total := expedition_total_seconds(expedition_type)
 	return clampf(expedition_end - now(), 0.0, total)       # откат часов не растягивает поход дольше его длительности
 
 
@@ -501,7 +544,7 @@ func start_expedition(index: int) -> bool:
 	if expedition_active() or index < 0 or index >= Retention.EXPEDITIONS.size():
 		return false
 	expedition_type = index
-	expedition_end = now() + float(Retention.EXPEDITIONS[index]["hours"]) * 3600.0
+	expedition_end = now() + expedition_total_seconds(index)
 	return true
 
 
@@ -595,7 +638,7 @@ func autobuy_step() -> String:
 
 
 func offline_cap_seconds() -> float:
-	return OFFLINE_CAP_SECONDS + 4.0 * 3600.0 * int(meta["offline"])
+	return OFFLINE_CAP_SECONDS + 4.0 * 3600.0 * int(meta["offline"]) + Machines.WINCH_OFFLINE_STEP * machine_level("winch")
 
 
 ## Ядро достигнуто на этой планете: можно лететь на следующую.

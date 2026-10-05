@@ -107,6 +107,7 @@ func _ready() -> void:
 			_show_toast(Tr.t("Хранитель зоны! Бейте по нему"))
 			_say_hint("first_boss")
 			sfx.play("boom", -8.0, 0.6))
+	_table.blasted.connect(func() -> void: sfx.play("boom", -9.0, 0.8))
 	_table.boss_hit.connect(func() -> void: sfx.play("boss_hit", -6.0))
 	_table.boss_defeated.connect(_on_boss_defeated)
 	_table.boss_gone.connect(func() -> void: _show_toast(Tr.t("Хранитель рассыпался")))
@@ -434,7 +435,7 @@ func _on_ore_collected(ore: int) -> void:
 func _on_machine_unlocked(id: String) -> void:
 	_show_toast(Tr.t("Открыта машина: %s") % Tr.t(str(Machines.data(id)["name"])))
 	sfx.play("claim", -4.0)
-	_say_hint("first_machine")
+	_say_hint("first_machine" if id == "crusher" else "machine_" + id)
 	_machines.refresh()
 
 

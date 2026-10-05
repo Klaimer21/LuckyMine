@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_achievements()
 	_test_biomes()
 	_test_machines()
+	_test_machines_stage1()
 	_test_hints()
 	_test_plurals()
 	_test_time()
@@ -265,7 +266,7 @@ func _test_machines() -> void:
 	# цены
 	var base := float(Machines.data("crusher")["base_cost"])
 	_check(is_equal_approx(state.machine_cost("crusher", 1), base), "first level costs the base price")
-	_check(is_equal_approx(state.machine_cost("crusher", 2), base * (1.0 + 1.5)), "two levels cost 1 + growth")
+	_check(is_equal_approx(state.machine_cost("crusher", 2), base * (1.0 + 1.4)), "two levels cost 1 + growth")
 	state.planet = 1
 	_check(is_equal_approx(state.machine_cost("crusher", 1), base * Biomes.PLANET_SCALE), "price scales with the planet")
 	state.planet = 0
@@ -303,7 +304,61 @@ func _test_machines() -> void:
 	away.update_machine_unlocks()
 	var plain := away.income_per_second()
 	away.machines["crusher"] = 10
-	_check(away.income_per_second() > plain * 1.3, "income with the crusher is higher")
+	_check(away.income_per_second() > plain * 1.25, "income with the crusher is higher")
+
+
+func _test_machines_stage1() -> void:
+	# открытие по зонам
+	var state := ClickerState.new()
+	state.update_machine_unlocks()
+	_check(not state.machine_unlocked("conveyor") and not state.machine_unlocked("blaster") and not state.machine_unlocked("winch"), "zone machines locked in zone 0")
+	state.total_earned = 3.0e6
+	_check(state.update_machine_unlocks() == ["conveyor"], "Conveyor unlocks in zone 1")
+	state.total_earned = 2.0e8
+	_check(state.update_machine_unlocks() == ["blaster"], "Blaster unlocks in zone 2")
+	state.total_earned = 2.0e11
+	_check(state.update_machine_unlocks() == ["winch"], "Winch unlocks in zone 3")
+	# Конвейер
+	state.machines["conveyor"] = 10
+	_check(is_equal_approx(state.ore_shift(), 0.10), "Conveyor lowers the ore threshold by 1% per level")
+	# Подрывник
+	_check(state.blaster_interval() == 0.0 and state.blaster_share() == 0.0, "Blaster idle at level 0")
+	state.machines["blaster"] = 1
+	_check(is_equal_approx(state.blaster_interval(), 58.1), "Blaster period at level 1")
+	state.machines["blaster"] = 20
+	_check(is_equal_approx(state.blaster_interval(), 22.0), "Blaster period at level 20")
+	var base := state.base_income_per_second()
+	_check(is_equal_approx(state.income_per_second(), base * (1.0 + 4.0 / 22.0)), "income includes the Blaster share")
+	# Лебёдка
+	state.machines["winch"] = 0
+	var cap := state.offline_cap_seconds()
+	state.machines["winch"] = 12
+	_check(is_equal_approx(state.expedition_time_factor(), 0.52), "Winch cuts expeditions by 4% per level")
+	_check(is_equal_approx(state.offline_cap_seconds(), cap + 12.0 * 1800.0), "Winch adds 30 minutes of offline cap per level")
+	_check(is_equal_approx(state.expedition_total_seconds(0), 3600.0 * 0.52), "expedition length with the Winch")
+	var winch_state := ClickerState.new()
+	winch_state.machines["winch"] = 5
+	winch_state.start_expedition(1)
+	_check(absf(winch_state.expedition_remaining() - 4.0 * 3600.0 * 0.8) < 5.0, "expedition started with the Winch is shorter")
+	# сохранение, сброс, планета
+	var saved := ClickerState.new()
+	saved.total_earned = 2.0e11
+	saved.update_machine_unlocks()
+	saved.machines["conveyor"] = 7
+	saved.machines["blaster"] = 9
+	saved.machines["winch"] = 3
+	var loaded := ClickerState.new()
+	loaded.load_from_text(saved.serialize())
+	_check(loaded.machine_level("conveyor") == 7 and loaded.machine_level("blaster") == 9 and loaded.machine_level("winch") == 3, "all machine levels persist")
+	_check(loaded.machine_unlocked("blaster") and loaded.machine_unlocked("winch"), "zone unlocks persist")
+	var hostile := ClickerState.new()
+	hostile.load_from_text('{"machines": {"conveyor": -5, "blaster": 9999, "winch": "x"}}')
+	_check(hostile.machine_level("conveyor") == 0 and hostile.machine_level("blaster") <= 20 and hostile.machine_level("winch") == 0, "hostile levels clamped")
+	saved.coins = 1.0e15
+	saved.prestige()
+	_check(saved.machine_level("blaster") == 0 and saved.machine_unlocked("winch"), "New Mine resets levels, keeps unlocks")
+	# цены растут и масштабируются
+	_check(state.machine_cost("conveyor", 1) < state.machine_cost("blaster", 1) and state.machine_cost("blaster", 1) < state.machine_cost("winch", 1), "later machines cost more")
 
 
 func _test_hints() -> void:

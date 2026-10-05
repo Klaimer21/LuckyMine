@@ -13,7 +13,7 @@ var _next_buy := 0.0
 var _golden_seen_at := -1.0
 var _events := {}
 var _purchases: Array[float] = []
-var _snapshots := [30.0, 60.0, 180.0, 300.0, 600.0, 900.0]
+var _snapshots := [60.0, 300.0, 600.0, 900.0, 1800.0, 3600.0]
 var _snap_done := {}
 var _last_biome := 0
 var _passive := false
@@ -76,11 +76,22 @@ func _process(delta: float) -> bool:
 	if _t >= _next_buy:
 		_next_buy = _t + 0.25
 		var bought := ""
-		# машины: покупаем уровень, как только хватает монет (игрок видит золотую рамку ячейки)
-		if _use_machines and state.machine_unlocked("crusher") and state.machine_cost("crusher", 1) <= state.coins and state.machine_level("crusher") < state.machine_max_level("crusher"):
-			state.buy_machine("crusher", 1)
-			bought = "crusher"
-			_mark("первая покупка Дробилки")
+		# покупаем самое дешёвое из доступного: и улучшения, и машины (как «Автоснабжение», только с машинами)
+		var machine := ""
+		if _use_machines:
+			var best_price := INF
+			for key in ClickerState.ORDER:
+				best_price = minf(best_price, state.cost(key))
+			for id in Machines.ids():
+				if state.machine_unlocked(id) and state.machine_level(id) < state.machine_max_level(id):
+					var price := state.machine_cost(id, 1)
+					if price <= state.coins and price < best_price:
+						best_price = price
+						machine = id
+		if machine != "":
+			state.buy_machine(machine, 1)
+			bought = "machine"
+			_mark("первая покупка: %s" % Machines.data(machine)["name"])
 			_machine_buys += 1
 		else:
 			bought = state.autobuy_step()
@@ -124,6 +135,9 @@ func _finish() -> void:
 			max_gap = t - previous
 			gap_at = previous
 		previous = t
-	print("PACE покупок Дробилки: %d, уровень %d" % [_machine_buys, _main.state.machine_level("crusher")])
+	var levels := {}
+	for id in Machines.ids():
+		levels[id] = _main.state.machine_level(id)
+	print("PACE покупок машин: %d, уровни %s" % [_machine_buys, levels])
 	print("PACE покупок за забег: %d; самая долгая пауза между покупками: %.1f c (с %.0f-й секунды)" % [_purchases.size(), max_gap, gap_at])
 	quit()
