@@ -16,6 +16,9 @@ var _flash := 0.0
 var _rng := RandomNumberGenerator.new()
 
 
+var reduced := false                   # «Меньше эффектов»: без вспышек (искры к счётчику остаются)
+
+
 func _init() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -36,12 +39,16 @@ func emit_sparks(from: Vector2, color: Color = UiTheme.BRASS) -> void:
 
 ## Короткий четырёхлучевой блик на месте вылета редкой руды.
 func glint(at: Vector2, color: Color = Color(1.0, 0.97, 0.85)) -> void:
+	if reduced:
+		return
 	if _glints.size() < 12:
 		_glints.append({"pos": at, "t": 0.0, "color": color})
 
 
 ## Взрыв динамита: расходящаяся волна и короткая вспышка.
 func blast(at: Vector2) -> void:
+	if reduced:
+		return
 	_blasts.append({"pos": at, "t": 0.0})
 	_flash = 0.35
 

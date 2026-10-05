@@ -95,7 +95,7 @@ func _ready() -> void:
 			state.golden_caught += 1
 			if state.golden_caught % 3 == 0:
 				_rewards.award_dynamite(1)
-			_say_hint("first_rush", "Золотая лихорадка: ×7 к добыче на 15 секунд. На 5 минут её можно купить в журнале за алмазы или получить за рекламу.")
+			_say_hint("first_rush")
 			_show_toast(Tr.t("Золотая лихорадка ×%d") % int(ClickerState.BOOST_FACTOR))
 			sfx.play("rush", -3.0)
 			sfx.play("claim", -8.0)
@@ -103,7 +103,7 @@ func _ready() -> void:
 	_table.ore_collected.connect(_on_ore_collected)
 	_table.boss_spawned.connect(func(_zone: int) -> void:
 			_show_toast(Tr.t("Хранитель зоны! Бейте по нему"))
-			_say_hint("first_boss", "Хранитель зоны: бейте по нему касаниями или взорвите динамитом. Число над ним — оставшиеся удары. Внутри геода и алмазы.")
+			_say_hint("first_boss")
 			sfx.play("boom", -8.0, 0.6))
 	_table.boss_hit.connect(func() -> void: sfx.play("boss_hit", -6.0))
 	_table.boss_defeated.connect(_on_boss_defeated)
@@ -130,6 +130,9 @@ func _ready() -> void:
 	layer.add_child(_ui)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
+	get_window().size_changed.connect(_apply_aspect)
+	RenderingServer.set_default_clear_color(UiTheme.BG)       # поля при «keep» того же цвета, что и фон интерфейса
+	_apply_aspect()
 	_save_dialogs.setup(_ui, state, _show_toast)
 	_sheet.setup(_ui, state, settings, sfx, PANEL_HEIGHT, _refresh, func(px: float) -> void: _hint_card.set_lift(px),
 			func(key: String) -> void: _tutorial.notify("buy_" + key))
@@ -139,7 +142,7 @@ func _ready() -> void:
 				_shown_coins = state.coins
 				_prestige_key = -1
 				_sheet.reset_affordability()
-				_say_hint("after_prestige", "Жилы прибавили доход навсегда. Новые очки навыков тратятся в журнале («Навыки»). Зоны и коллекция остались при вас."),
+				_say_hint("after_prestige"),
 			func() -> void:
 				_earned_batch = 0.0
 				_shown_coins = 0.0
@@ -156,7 +159,7 @@ func _ready() -> void:
 			func() -> void: _dynamite_shown = -1,
 			func() -> int: return _biome)
 	_perf.setup(_ui, state, settings, _table, get_viewport(), func() -> void:
-			_say_hint("low_fps", "Мало кадров в секунду. В настройках можно понизить качество, а «Тест нагрузки» покажет, что тянет устройство."))
+			_say_hint("low_fps"))
 	_info.setup(_ui, state, settings, sfx, _show_toast, func() -> void: _tutorial.start(), func() -> void:
 			if not _rewards.offline_doubled():
 				_rewards.on_ad_requested("offline"))
@@ -177,7 +180,7 @@ func _ready() -> void:
 	# подсказка про навыки: очки есть, а ни один не куплен
 	get_tree().create_timer(6.0).timeout.connect(func() -> void:
 			if state.tutorial_done and state.skill_points > 0 and state.skill_level("drill") + state.skill_level("dynamite") + state.skill_level("luck") == 0:
-				_say_hint("skills", "Есть очки навыков: журнал → «Навыки». В каждой ветке навыки открываются по порядку."))
+				_say_hint("skills"))
 
 
 func _process(delta: float) -> void:
@@ -238,7 +241,7 @@ func _update_depth(delta: float) -> void:
 	_depth_bar.visible = _biome < Biomes.CORE
 	var index := Biomes.index_for(total, state.planet_scale())
 	if state.planet_ready():
-		_say_hint("planet_ready", "Ядро достигнуто! В журнале → «Планета» откроется «Новая планета»: звёздная пыль и мета-улучшения.")
+		_say_hint("planet_ready")
 	if index != _biome and not _perf.stress_active:
 		_biome = index
 		_table.set_biome(index, true)
@@ -259,7 +262,7 @@ func _update_prestige_button() -> void:
 	if pending >= 1 and state.prestiges == 0 and not _prestige_hinted:
 		_prestige_hinted = true
 		_show_toast(Tr.t("Открыта «Новая шахта»"))
-		_say_hint("prestige_ready", "«Новая шахта» сбрасывает монеты и улучшения, но даёт жилы: доход растёт навсегда, а ещё очки навыков. Лучше жать, когда кнопка латунная.")
+		_say_hint("prestige_ready")
 	_prestige_button.text = Tr.t("Новая шахта") + "  +" + NumberFormat.short(float(pending))
 	UiTheme.style_key(_prestige_button, "brass" if recommended else "dark")
 
@@ -328,11 +331,11 @@ func _on_tutorial_done() -> void:
 
 
 ## Подсказка по требованию: один раз за всю игру (и не во время обучения).
-func _say_hint(id: String, text: String) -> void:
+func _say_hint(id: String) -> void:
 	if not state.tutorial_done or _perf.stress_active:
 		return
 	if state.take_hint(id):
-		_hint_card.show_hint(Tr.t(text))
+		_hint_card.show_hint(Tr.t(Hints.text(id)))
 
 
 func _show_toast(text: String) -> void:
@@ -349,16 +352,16 @@ func _on_biome_changed(index: int) -> void:
 	if index > state.dynamite_zone_best:
 		state.dynamite_zone_best = index
 		_rewards.award_dynamite(2)
-	_say_hint("first_zone", "Новая зона: меняются вид, музыка и руда, а доход растёт. Заглядывайте в журнал: там награды за зоны.")
+	_say_hint("first_zone")
 	match index:
 		2:
-			_say_hint("zone_2", "Железные жилы. Теперь среди находок попадается золото: оно запускает золотой запал.")
+			_say_hint("zone_2")
 		3:
-			_say_hint("zone_3", "Золотые залежи! Руда богаче, а хранители крепче: держите динамит под рукой.")
+			_say_hint("zone_3")
 		4:
-			_say_hint("zone_4", "Кристальная пещера. Алмазов здесь больше всего: тратьте их в журнале («Лавка»).")
+			_say_hint("zone_4")
 		5:
-			_say_hint("zone_5", "Магма: жарко! Дальше только Ядро. Загляните в журнал: пора думать о «Новой шахте».")
+			_say_hint("zone_5")
 	settings.vibrate(40)
 	if index == Biomes.CORE and not state.ending_seen:
 		state.ending_seen = true
@@ -411,16 +414,16 @@ func _on_ore_collected(ore: int) -> void:
 	if _perf.stress_active:
 		return
 	state.collect_find(ore)
-	_say_hint("first_ore", "Находка! Руда копится в журнале: каждая веха коллекции даёт постоянный бонус к доходу.")
+	_say_hint("first_ore")
 	if ore == 3:
-		_say_hint("first_gold", "Золото запускает «Золотой запал»: ×2 к доходу на несколько секунд, потом пауза.")
+		_say_hint("first_gold")
 	if ore == 4:
-		_say_hint("first_diamond", "Алмаз! Это вторая валюта: в журнале («Лавка») за неё можно купить «Золотую лихорадку» и динамит.")
+		_say_hint("first_diamond")
 
 
 ## Короткая «заморозка» кадра на редкой находке: вес событию. Время возвращается по таймеру реального времени.
 func _hit_stop(seconds: float) -> void:
-	if not settings.hit_stop or _perf.stress_active or Engine.time_scale != 1.0:
+	if settings.reduce_motion or _perf.stress_active or Engine.time_scale != 1.0:
 		return
 	Engine.time_scale = 0.05
 	get_tree().create_timer(seconds, true, false, true).timeout.connect(func() -> void: Engine.time_scale = 1.0)
@@ -441,6 +444,16 @@ func _on_boss_defeated(zone: int) -> void:
 
 ## «Новая планета»: окно подтверждения, затем сброс забега, смена оттенка мира и возврат в первую зону.
 ## На телефонах отступаем от вырезов и системных полос (чёлка, жесты внизу): интерфейс сдвигается в безопасную область.
+## Игра рассчитана на вертикальный экран. Окно шире 0,62 (планшет, компьютер, ландшафт): холст не растягивается,
+## по бокам поля цвета фона; на вытянутых телефонах (до 9:16…9:21) холст по-прежнему занимает весь экран.
+func _apply_aspect() -> void:
+	var window := get_window()
+	if window.size.y <= 0:
+		return
+	var ratio := float(window.size.x) / float(window.size.y)
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP if ratio > 0.62 else Window.CONTENT_SCALE_ASPECT_EXPAND
+
+
 func _apply_safe_area() -> void:
 	if not OS.has_feature("mobile"):
 		return
@@ -458,10 +471,10 @@ func _on_dynamite_pressed() -> void:
 	if _perf.stress_active:
 		return
 	if not state.use_dynamite():
-		_say_hint("dynamite_empty", "Динамит закончился. Его дают за новые зоны, хранителей, золотые глыбы, походы и награды; можно купить за алмазы в журнале или получить за рекламу.")
+		_say_hint("dynamite_empty")
 		_show_toast(Tr.t("Динамита нет"))
 		return
-	_say_hint("first_dynamite", "Динамит взрывает всё в воздухе, подбирает находки и платит как за 30 секунд дохода и выбивает из породы руду. Запас ограничен, берегите его для хранителей.")
+	_say_hint("first_dynamite")
 	_dynamite_shown = -1
 	state.save()
 	_table.detonate()
@@ -549,10 +562,13 @@ func _build_ui() -> void:
 			state.hints_seen.clear()
 			_show_toast(Tr.t("Подсказки включены снова")))
 	_settings_screen.stats_requested.connect(_info.show_stats)
+	_settings_screen.help_requested.connect(_info.show_help)
 	_settings_screen.tutorial_requested.connect(func() -> void:
 			state.tutorial_done = false
 			_tutorial.start())
 	_settings_screen.settings_changed.connect(_perf.refresh_fps_visibility)
+	_settings_screen.settings_changed.connect(func() -> void: _fx.reduced = settings.reduce_motion)
+	_fx.reduced = settings.reduce_motion
 	_refresh()
 
 
@@ -632,7 +648,7 @@ func _build_top() -> void:
 			journal_gem.position = Vector2(_journal_button.size.x - right_margin - text_width - 38.0, (_journal_button.size.y - 30.0) * 0.5))
 	_journal_button.pressed.connect(func() -> void:
 			_journal.open()
-			_say_hint("journal_first", "Походы идут по реальному времени, даже пока игра закрыта: отправьте шахтёров и возвращайтесь за добычей."))
+			_say_hint("journal_first"))
 	top.add_child(_journal_button)
 	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 40, Vector2(96, 96))
 	gear.size_flags_vertical = Control.SIZE_SHRINK_BEGIN

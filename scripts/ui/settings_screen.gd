@@ -11,6 +11,7 @@ signal settings_changed
 signal stress_requested
 signal tutorial_requested
 signal stats_requested
+signal help_requested
 signal hints_reset_requested
 
 var settings: Settings
@@ -112,6 +113,9 @@ func rebuild() -> void:
 	var stats_button := UiTheme.make_button("Статистика", false, 30)
 	stats_button.pressed.connect(func() -> void: stats_requested.emit())
 	_content.add_child(stats_button)
+	var help_button := UiTheme.make_button("Помощь", false, 30)
+	help_button.pressed.connect(func() -> void: help_requested.emit())
+	_content.add_child(help_button)
 	var tutorial_button := UiTheme.make_button("Показать обучение", false, 30)
 	tutorial_button.pressed.connect(func() -> void:
 			visible = false
@@ -160,9 +164,11 @@ func rebuild() -> void:
 	_add_toggle("Числа при ударе", settings.popups, func(on: bool) -> void:
 			settings.popups = on
 			_changed())
-	_add_toggle("Пауза кадра на находках", settings.hit_stop, func(on: bool) -> void:
-			settings.hit_stop = on
+	_add_toggle("Меньше эффектов", settings.reduce_motion, func(on: bool) -> void:
+			settings.reduce_motion = on
 			_changed())
+	var motion_note := UiTheme.make_text("Без тряски камеры, вспышек и паузы кадра.", 28, UiTheme.MUTE)
+	_content.add_child(motion_note)
 
 	_add_section("Перенос прогресса")
 	var transfer_note := UiTheme.make_label("Код хранит весь прогресс: перенесите игру на другое устройство или сохраните копию. Не показывайте его другим.", 24, UiTheme.MUTE)

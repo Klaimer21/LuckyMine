@@ -4,7 +4,6 @@ extends Control
 ## событии и исчезает сама (или по касанию). Подсказки идут по одной, остальные ждут в очереди.
 ## Какие уже показаны — помнит ClickerState.
 
-const SHOW_SECONDS := 9.0
 
 var peek: CompanionPeek
 var panel_height := 640.0
@@ -14,6 +13,7 @@ var _queue: Array[String] = []
 var _bubble: PanelContainer
 var _label: Label
 var _time := 0.0
+var _duration := 9.0                  # зависит от длины текста (Hints.seconds_for)
 var _shown := false
 
 
@@ -73,6 +73,7 @@ func _next() -> void:
 		return
 	_shown = true
 	_label.text = _queue.pop_front()
+	_duration = Hints.seconds_for(_label.text)
 	_layout()
 	_bubble.visible = true
 	_time = 0.0
@@ -87,7 +88,7 @@ func _process(delta: float) -> void:
 	if not _shown:
 		return
 	_time += delta
-	if _time >= SHOW_SECONDS:
+	if _time >= _duration:
 		_dismiss()
 
 

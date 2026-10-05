@@ -4,7 +4,7 @@ extends SceneTree
 ## слишком мелкие кнопки. Запуск (нужно окно): godot --path . --script res://tests/ui_lint.gd
 ## FAIL — сломано (код выхода 1), WARN — на усмотрение. Игра пишет сохранение: запускать на копии профиля.
 
-const CANVAS := Vector2(1080, 1920)
+var _canvas := Vector2(1080, 1920)       # реальный размер холста: зависит от пропорций окна (растяжение «expand»)
 const MIN_TOUCH := 72.0                  # холст 1080 px ≈ 360 dp: 72 px ≈ 24 dp; кнопки ниже — предупреждение
 
 var _main: Node
@@ -31,6 +31,8 @@ func _close_modals() -> void:
 
 func _run() -> void:
 	await _wait(0.5)
+	_canvas = root.get_visible_rect().size
+	print("LINT canvas ", _canvas)
 	var state: ClickerState = _main.state
 	state.tutorial_done = true
 	state.daily_day = ClickerState.today()
@@ -79,6 +81,10 @@ func _screens(language: String) -> void:
 		"сброс прогресса": func() -> void: _main._save_dialogs.reset_progress(),
 		"импорт кода": func() -> void: _main._save_dialogs.import_code(),
 		"новая шахта": func() -> void: _main._progression.show_prestige(),
+		"помощь": func() -> void:
+			for id in ["first_ore", "first_gold", "first_diamond", "zone_2", "first_boss"]:
+				_main.state.hints_seen[id] = true
+			_main._info.show_help(),
 	}
 	for name in dialogs:
 		(dialogs[name] as Callable).call()
@@ -139,7 +145,7 @@ func _lint(scope: Node, language: String, screen: String, is_main: bool) -> void
 			continue
 		var rect := control.get_global_rect()
 		var scrolled := _in_scroll(control)
-		var bounded := rect.position.x >= -2.0 and rect.end.x <= CANVAS.x + 2.0 and (scrolled or (rect.position.y >= -2.0 and rect.end.y <= CANVAS.y + 2.0))
+		var bounded := rect.position.x >= -2.0 and rect.end.x <= _canvas.x + 2.0 and (scrolled or (rect.position.y >= -2.0 and rect.end.y <= _canvas.y + 2.0))
 		if control is Label:
 			var label := control as Label
 			if label.text == "":
@@ -149,7 +155,7 @@ func _lint(scope: Node, language: String, screen: String, is_main: bool) -> void
 			if label.autowrap_mode == TextServer.AUTOWRAP_OFF:
 				if label.get_minimum_size().x > label.size.x + 1.0 and label.clip_text == false and label.text_overrun_behavior == TextServer.OVERRUN_NO_TRIMMING:
 					# подпись шире своей области: в контейнерах она раздвигается, поэтому важно только если она вышла за экран/родителя
-					var parent_rect := (label.get_parent() as Control).get_global_rect() if label.get_parent() is Control else Rect2(Vector2.ZERO, CANVAS)
+					var parent_rect := (label.get_parent() as Control).get_global_rect() if label.get_parent() is Control else Rect2(Vector2.ZERO, _canvas)
 					if rect.end.x > parent_rect.end.x + 2.0 and not scrolled:
 						_report("FAIL", language, screen, "подпись «%s» шире контейнера" % label.text.left(30), control)
 			elif label.get_line_count() > label.get_visible_line_count() and label.get_visible_line_count() > 0:

@@ -100,7 +100,20 @@ func _process(delta: float) -> bool:
 		[31.4, func() -> void: _shot("18_boost_toast")],
 		[31.5, func() -> void: _main._tutorial.start()],
 		[32.3, func() -> void: _shot("19_tutorial")],
-		[32.4, func() -> void: quit()],
+		[32.4, func() -> void:
+			for modal in _main.find_children("*", "Modal", true, false):
+				modal.close()
+			for id in ["first_ore", "first_gold", "first_diamond", "zone_2", "first_boss", "first_dynamite"]:
+				_main.state.hints_seen[id] = true
+			_main._tutorial.visible = false
+			_main._info.show_help()],
+		[33.2, func() -> void: _shot("20_help")],
+		[33.3, func() -> void:
+			for modal in _main.find_children("*", "Modal", true, false):
+				modal.close()
+			_main._settings_screen.open()],
+		[34.0, func() -> void: _shot("21_settings_effects")],
+		[34.1, func() -> void: quit()],
 	]
 	if _step < plan.size() and _t >= float(plan[_step][0]):
 		(plan[_step][1] as Callable).call()

@@ -116,6 +116,7 @@ class Gem extends RefCounted:
 
 var state: ClickerState
 var show_popups := true
+var reduce_motion := false            # без тряски камеры
 var auto_throw := true
 var quality := 1
 var stress_rate := 0.0          # тест нагрузки: искусственная скорость падения глыб (0 — обычная игра)
@@ -778,7 +779,7 @@ func _step_gems(dt: float) -> void:
 ## Лёгкая тряска камеры от ударов: хаос, но недолго.
 func _update_shake(delta: float) -> void:
 	_shake = maxf(0.0, _shake - delta * 2.6)
-	var amount := _shake * _shake * 0.09
+	var amount := 0.0 if reduce_motion else _shake * _shake * 0.09
 	var jitter := Vector2(_rng.randf_range(-amount, amount), _rng.randf_range(-amount, amount))
 	camera.h_offset = jitter.x
 	camera.v_offset = jitter.y

@@ -150,6 +150,34 @@ func show_offline(earned: float) -> Modal:
 	return modal
 
 
+## «Помощь»: подсказки, которые игрок уже видел, чтобы их можно было перечитать.
+func show_help() -> void:
+	var modal := Modal.new()
+	modal.body.add_child(UiTheme.make_label("Помощь", 54, UiTheme.TEXT, true))
+	var seen: Array = []
+	for id in Hints.TEXTS:
+		if state.hints_seen.has(id):
+			seen.append(id)
+	modal.body.add_child(UiTheme.make_text(Tr.t("Подсказки, которые вы уже видели: %d из %d") % [seen.size(), Hints.TEXTS.size()], 28, UiTheme.MUTE))
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y = 760
+	modal.body.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 16)
+	scroll.add_child(list)
+	if seen.is_empty():
+		list.add_child(UiTheme.make_text("Подсказки появляются по ходу игры: при первой находке, новой зоне, хранителе и так далее.", 30, UiTheme.TEXT))
+	for id in seen:
+		list.add_child(UiTheme.make_text(Hints.text(id), 30, UiTheme.TEXT))
+		list.add_child(UiTheme.hairline())
+	var close_button := UiTheme.make_button("Закрыть", false, 32)
+	close_button.pressed.connect(modal.close)
+	modal.body.add_child(close_button)
+	host.add_child(modal)
+
+
 func show_stats() -> void:
 	var modal := Modal.new()
 	modal.body.add_child(UiTheme.make_label("Статистика", 54, UiTheme.TEXT, true))

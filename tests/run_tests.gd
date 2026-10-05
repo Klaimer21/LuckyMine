@@ -22,6 +22,7 @@ func _init() -> void:
 	_test_collection()
 	_test_achievements()
 	_test_biomes()
+	_test_hints()
 	_test_plurals()
 	_test_time()
 	_test_save_load()
@@ -250,6 +251,15 @@ func _test_biomes() -> void:
 	for planet in 8:
 		_check(Biomes.planet_name(planet) != "", "planet name %d" % planet)
 		_check(Biomes.planet_mod_text(planet) != "", "planet text %d" % planet)
+
+
+func _test_hints() -> void:
+	_check(Hints.TEXTS.size() >= 18, "hints registry has the game hints")
+	_check(Hints.text("first_ore") != "" and Hints.text("no_such_hint") == "", "hint lookup")
+	_check(Hints.seconds_for("") == 5.0 and Hints.seconds_for("x".repeat(1000)) == 14.0, "hint time clamped to 5..14 s")
+	_check(Hints.seconds_for("x".repeat(100)) > Hints.seconds_for("x".repeat(40)), "longer hint stays longer")
+	for id in Hints.TEXTS:
+		_check(str(Hints.TEXTS[id]).length() > 10, "hint %s has text" % id)
 
 
 func _test_plurals() -> void:
