@@ -14,7 +14,26 @@ const UPGRADES := {
 	"tap": {"base": 25.0, "growth": 1.45},
 	"faces": {"base": 60.0, "growth": 2.0},
 	"mult": {"base": 250.0, "growth": 2.6},
+	# дополнительные (7 октября 2026): открываются с зоны "zone", уровней не больше "max". Числа сверены с tools/economy_sim.py (NEW_UP)
+	"crit": {"base": 5000.0, "growth": 2.2, "max": 20, "zone": 1},      # «Критический обвал»: шанс глыбы заплатить ×5
+	"combo": {"base": 3000.0, "growth": 2.0, "max": 10, "zone": 1},     # «Серия касаний»: бонус за глыбы от касаний подряд
+	"nose": {"base": 12000.0, "growth": 2.0, "max": 15, "zone": 2},     # «Рудный нюх»: руда в глыбах чаще
+	"spark": {"base": 9000.0, "growth": 2.1, "max": 10, "zone": 2},     # «Золотой запал+»: запал дольше и чаще
+	"dbl": {"base": 30000.0, "growth": 2.3, "max": 20, "zone": 3},      # «Двойной улов»: шанс глыбы заплатить ×2
+	"dynamo": {"base": 15000.0, "growth": 2.2, "max": 10, "zone": 3},   # «Динамитчик»: динамит копится сам
 }
+const CRIT_CHANCE_STEP := 0.01          # шанс крита за уровень (до 20%)
+const CRIT_MULT := 5.0
+const DOUBLE_CHANCE_STEP := 0.015       # шанс удвоения за уровень (до 30%)
+const NOSE_STEP := 0.01                 # сдвиг порога руды за уровень «Рудного нюха»
+const SPARK_SECONDS_STEP := 0.3         # секунд к «Золотому запалу» за уровень
+const SPARK_COOLDOWN_STEP := 0.4        # секунд минус от паузы за уровень
+const COMBO_STEP := 0.004               # прибавка к монетам за глыбы от касаний за уровень и за каждое касание серии
+const COMBO_MAX := 25                   # касаний серии, дальше бонус не растёт
+const COMBO_WINDOW := 1.5               # секунд между касаниями, чтобы серия шла дальше
+const DYNAMO_BASE_PERIOD := 900.0       # секунд на один динамит на 0-м уровне (минус DYNAMO_STEP за уровень)
+const DYNAMO_STEP := 60.0
+const DYNAMO_MIN_PERIOD := 300.0
 ## Престиж «Новая шахта»: жилы = целая часть (заработанное за всё время / VEIN_BASE)^(1/3), минус уже полученные.
 ## Каждая жила даёт +VEIN_STEP к доходу навсегда. Числа подобраны симуляцией (docs/ROADMAP.md).
 const VEIN_BASE := 1.0e6
@@ -68,7 +87,7 @@ const GOLDEN_PAYOUT := [1.0, 1.0, 1.0, 1.5, 1.5]
 const SHIFT_CAP_HOURS := [0.0, 2.0, 2.0, 2.0, 6.0]
 const SHIFT_INCOME := [1.0, 1.0, 1.15, 1.15, 1.3]
 const SHIFT_LAB_CAP := [0, 0, 0, 12, 12]               # прибавка к офлайн-алмазам Лаборатории
-const ORDER := ["rain", "tap", "faces", "mult"]
+const ORDER := ["rain", "tap", "faces", "mult", "crit", "combo", "nose", "spark", "dbl", "dynamo"]
 const MAX_BULK := 10000                  # потолок режима «Макс» за одну покупку
 
 ## false после сброса прогресса: пока сцена не перезагружена, старое состояние не должно записаться обратно.
@@ -80,7 +99,11 @@ var total_earned := 0.0          # всего заработано за всё �
 var ending_seen := false
 var veins := 0                     # жилы: постоянный множитель дохода
 var prestiges := 0
-var levels := {"rain": 0, "tap": 0, "faces": 0, "mult": 0}
+var levels := {"rain": 0, "tap": 0, "faces": 0, "mult": 0, "crit": 0, "combo": 0, "nose": 0, "spark": 0, "dbl": 0, "dynamo": 0}
+var upgrades_unlocked := {}            # key -> true: открытые дополнительные улучшения (остаются навсегда)
+var dynamo_progress := 0.0             # секунд до следующего динамита «Динамитчика»
+var combo := 0                         # касаний подряд (не сохраняется)
+var combo_left := 0.0
 var machines := Machines.blank_levels()   # уровни машин (сбрасываются с «Новой шахтой»)
 var machines_unlocked := {}            # id -> true: открытые машины (остаются навсегда)
 var machine_boost_time := 0.0          # реклама «Машины ×2»: секунд осталось (не сохраняется)
@@ -159,7 +182,7 @@ func lab_interval() -> float:
 
 ## Вагонетка: пауза между «Золотыми запалами» и их длительность.
 func mini_cooldown_seconds() -> float:
-	return maxf(2.0, MINI_COOLDOWN - float(Machines.data("cart")["step"]) * machine_level("cart"))
+	return maxf(2.0, MINI_COOLDOWN - float(Machines.data("cart")["step"]) * machine_level("cart") - SPARK_COOLDOWN_STEP * int(levels["spark"]))
 
 
 ## Каждый кадр: время рекламного буста машин и капли алмазов Лаборатории. Возвращает, сколько алмазов только что выпало.
@@ -180,7 +203,7 @@ func tick_machines(delta: float) -> int:
 
 ## Конвейер: на сколько опускаются пороги ценности, с которых в глыбе есть руда (доля от максимума).
 func ore_shift() -> float:
-	return (float(Machines.data("conveyor")["step"]) * machine_level("conveyor") + float(Machines.data("rover")["step"]) * machine_level("rover")) * (1.25 if skill_level("machines") >= 4 else 1.0)
+	return (float(Machines.data("conveyor")["step"]) * machine_level("conveyor") + float(Machines.data("rover")["step"]) * machine_level("rover")) * (1.25 if skill_level("machines") >= 4 else 1.0) + NOSE_STEP * int(levels["nose"])
 
 
 ## Подрывник: секунд между малыми взрывами (0 — не куплен).
@@ -246,13 +269,65 @@ func multiplier() -> float:
 	return pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0)
 
 
+## Шанс критического обвала и удвоения (улучшения «Критический обвал» и «Двойной улов»).
+func crit_chance() -> float:
+	return CRIT_CHANCE_STEP * int(levels["crit"])
+
+
+func double_chance() -> float:
+	return DOUBLE_CHANCE_STEP * int(levels["dbl"])
+
+
+## Во сколько раз в среднем крит и удвоение увеличивают выплату глыбы (мат. ожидание; по нему считаются доход, офлайн и награды).
+func payout_ev() -> float:
+	return (1.0 + crit_chance() * (CRIT_MULT - 1.0)) * (1.0 + double_chance())
+
+
+## «Серия касаний»: касание (или «Обвал») продолжает серию, если с прошлого прошло не больше COMBO_WINDOW секунд.
+func note_tap() -> void:
+	combo = combo + 1 if combo_left > 0.0 else 1
+	combo_left = COMBO_WINDOW
+
+
+func tick_combo(delta: float) -> void:
+	if combo_left > 0.0:
+		combo_left = maxf(0.0, combo_left - delta)
+		if combo_left <= 0.0:
+			combo = 0
+
+
+## Бонус монет за глыбы от касаний по серии (уровень «Серии касаний» × касаний в серии, до COMBO_MAX).
+func combo_bonus() -> float:
+	return 1.0 + COMBO_STEP * int(levels["combo"]) * mini(combo, COMBO_MAX)
+
+
+## «Динамитчик»: секунд на один динамит (0 — не куплен).
+func dynamo_period() -> float:
+	var level := int(levels["dynamo"])
+	return 0.0 if level <= 0 else maxf(DYNAMO_MIN_PERIOD, DYNAMO_BASE_PERIOD - DYNAMO_STEP * level)
+
+
+## Каждый кадр: копит динамит «Динамитчика»; возвращает, сколько динамита только что добавилось.
+func tick_dynamo(delta: float) -> int:
+	var period := dynamo_period()
+	if period <= 0.0:
+		dynamo_progress = 0.0
+		return 0
+	dynamo_progress += delta
+	var added := 0
+	while dynamo_progress >= period:
+		dynamo_progress -= period
+		added += add_dynamite(1)
+	return added
+
+
 func average_value() -> float:
 	return (1.0 + max_face()) / 2.0 * multiplier()
 
 
 ## Доход от глыб без взрывов Подрывника (по нему же считается награда взрыва).
 func base_income_per_second() -> float:
-	return total_rock_rate() * average_value()
+	return total_rock_rate() * average_value() * payout_ev()
 
 
 func income_per_second() -> float:
@@ -261,7 +336,35 @@ func income_per_second() -> float:
 
 func cost(key: String) -> float:
 	var info: Dictionary = UPGRADES[key]
+	if not upgrade_unlocked(key) or upgrade_maxed(key):
+		return INF                       # закрытое или добранное до предела улучшение не покупается (и не попадает в «самое дешёвое»)
 	return float(info["base"]) * pow(float(info["growth"]), levels[key])
+
+
+## Предел уровней улучшения (у первых четырёх нет).
+func upgrade_cap(key: String) -> int:
+	return int((UPGRADES[key] as Dictionary).get("max", 1000000))
+
+
+func upgrade_maxed(key: String) -> bool:
+	return int(levels[key]) >= upgrade_cap(key)
+
+
+## Открыто ли улучшение (у первых четырёх условия нет; остальные открываются с зоны и остаются).
+func upgrade_unlocked(key: String) -> bool:
+	return not (UPGRADES[key] as Dictionary).has("zone") or upgrades_unlocked.has(key)
+
+
+## Открывает улучшения, до зоны которых игрок дошёл; возвращает только что открытые (для сообщения).
+func update_upgrade_unlocks() -> Array:
+	var opened: Array = []
+	var zone := Biomes.index_for(total_earned, planet_scale())
+	for key in ORDER:
+		var info: Dictionary = UPGRADES[key]
+		if info.has("zone") and not upgrades_unlocked.has(key) and zone >= int(info["zone"]):
+			upgrades_unlocked[key] = true
+			opened.append(key)
+	return opened
 
 
 func can_buy(key: String) -> bool:
@@ -286,16 +389,20 @@ func max_affordable(key: String) -> int:
 	var first := cost(key)
 	if coins < first:
 		return 0
+	var room := upgrade_cap(key) - int(levels[key])
 	var n := int(floor(log(coins * (growth - 1.0) / first + 1.0) / log(growth)))
 	while n > 0 and cost_for(key, n) > coins:
 		n -= 1
-	while n < MAX_BULK and cost_for(key, n + 1) <= coins:
+	while n < MAX_BULK and n < room and cost_for(key, n + 1) <= coins:
 		n += 1
-	return mini(n, MAX_BULK)
+	return mini(mini(n, MAX_BULK), room)
 
 
 ## Покупает ровно n уровней или ничего; возвращает, сколько куплено.
 func buy_n(key: String, n: int) -> int:
+	if n < 1 or not upgrade_unlocked(key):
+		return 0
+	n = mini(n, upgrade_cap(key) - int(levels[key]))      # выше предела не покупается
 	if n < 1:
 		return 0
 	var price := cost_for(key, n)
@@ -384,7 +491,7 @@ func diamond_chance_factor() -> float:
 
 
 func mini_seconds() -> float:
-	return MINI_SECONDS + (2.0 if skill_level("luck") >= 2 else 0.0) + Machines.CART_SECONDS_STEP * machine_level("cart")
+	return MINI_SECONDS + (2.0 if skill_level("luck") >= 2 else 0.0) + Machines.CART_SECONDS_STEP * machine_level("cart") + SPARK_SECONDS_STEP * int(levels["spark"])
 
 
 func golden_interval_factor() -> float:
@@ -988,7 +1095,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1144,7 +1251,12 @@ func _apply_save(data: Dictionary) -> float:
 			ad_ready_at[placement] = _num(saved_ads[placement], 0.0)
 	var saved_levels := _as_dict(data.get("levels"))
 	for key in ORDER:
-		levels[key] = _count(saved_levels.get(key), 0, 100000)
+		levels[key] = _count(saved_levels.get(key), 0, upgrade_cap(key) if key in ["crit", "combo", "nose", "spark", "dbl", "dynamo"] else 100000)
+	upgrades_unlocked = {}
+	for key in _as_array(data.get("upgrades_unlocked")):
+		if UPGRADES.has(str(key)) and (UPGRADES[str(key)] as Dictionary).has("zone"):
+			upgrades_unlocked[str(key)] = true
+	dynamo_progress = clampf(_num(data.get("dynamo_progress"), 0.0), 0.0, 100000.0)
 	var saved_machines := _as_dict(data.get("machines"))
 	for id in Machines.ids():
 		machines[id] = _count(saved_machines.get(id), 0, int(Machines.data(id)["max_level"]))
@@ -1163,6 +1275,12 @@ func _apply_save(data: Dictionary) -> float:
 	if lab_period > 0.0:
 		offline_lab_diamonds = mini(floori((away + lab_progress) / lab_period), Machines.LAB_OFFLINE_CAP + int(SHIFT_LAB_CAP[skill_level("shift")]))
 		diamonds += offline_lab_diamonds
+	update_upgrade_unlocks()
+	var dynamo := dynamo_period()
+	if dynamo > 0.0:
+		var made := floori((away + dynamo_progress) / dynamo)
+		add_dynamite(made)
+		dynamo_progress = fposmod(away + dynamo_progress, dynamo)
 	offline_capped = gone > offline_cap_seconds()
 	var earned := income_per_second() * away * float(SHIFT_INCOME[skill_level("shift")]) * (1.0 + 0.01 * machine_level("solar"))
 	add_coins(earned)

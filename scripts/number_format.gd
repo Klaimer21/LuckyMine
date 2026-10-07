@@ -6,6 +6,10 @@ const SUFFIXES := ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "
 
 
 static func short(n: float) -> String:
+	if is_nan(n):
+		return "0"
+	if is_inf(n):
+		return "∞" if n > 0.0 else "0"            # раньше бесконечность зацикливала подбор порядка
 	if n < 1000.0:
 		return str(int(n))
 	var tier := int(floor(log(n) / log(1000.0)))

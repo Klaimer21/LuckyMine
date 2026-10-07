@@ -3,8 +3,11 @@ extends RefCounted
 ## Меню улучшений: лист, выезжающий над нижней панелью. Режимы покупки ×1…Макс, автопокупка, карточки улучшений,
 ## их цены и доступность. Деньги и уровни хранит ClickerState; интерфейс вокруг (счётчик, подсказки) — в main (обратные вызовы).
 
-const UPGRADE_NAMES := {"rain": "Камнепад", "tap": "Сила обвала", "faces": "Глубина", "mult": "Добыча"}
-const UPGRADE_ICONS := {"rain": "rain", "tap": "tap", "faces": "gem", "mult": "cross"}
+const UPGRADE_NAMES := {"rain": "Камнепад", "tap": "Сила обвала", "faces": "Глубина", "mult": "Добыча",
+		"crit": "Критический обвал", "combo": "Серия касаний", "nose": "Рудный нюх", "spark": "Золотой запал+", "dbl": "Двойной улов", "dynamo": "Динамитчик"}
+const UPGRADE_ICONS := {"rain": "rain", "tap": "tap", "faces": "gem", "mult": "cross",
+		"crit": "px_bolt", "combo": "px_hammer", "nose": "px_compass", "spark": "spark", "dbl": "px_coins", "dynamo": "px_bomb"}
+const MAX_SCROLL_HEIGHT := 640.0          # выше этого список улучшений прокручивается
 
 var host: Control
 var state: ClickerState
@@ -12,7 +15,9 @@ var sheet: PanelContainer
 var sheet_open := false
 var upgrades_button: Button              # кнопка «Улучшения» в нижней панели: подпись показывает, что можно купить
 var autobuy_button: Button
-var rows: Dictionary = {}                # ключ улучшения -> {level, effect, button, coin}
+var rows: Dictionary = {}                # ключ улучшения -> {card, level, effect, button, coin}
+var _scroll: ScrollContainer
+var _list: VBoxContainer
 var panel_height := 350.0
 
 var _settings: Settings
@@ -81,17 +86,21 @@ func refresh() -> void:
 	UiTheme.style_key(autobuy_button, "felt" if state.autobuy_on else "dark")
 	for key in ClickerState.ORDER:
 		var row: Dictionary = rows[key]
+		(row["card"] as Control).visible = state.upgrade_unlocked(key)
 		var count := buy_count(key)
-		(row["level"] as Label).text = Tr.t("Ур. %d") % int(state.levels[key]) + (" +%d" % count if count > 1 else "")
+		var maxed := state.upgrade_maxed(key)
+		(row["level"] as Label).text = Tr.t("Ур. %d") % int(state.levels[key]) + (" +%d" % count if count > 1 and not maxed else "")
 		(row["effect"] as Label).text = _effect_text(key, count)
 		var button: Button = row["button"]
 		var price := state.cost_for(key, count)
-		button.text = NumberFormat.short(price)
-		var affordable := state.coins >= price
+		button.text = Tr.t("Макс") if maxed else NumberFormat.short(price)
+		var affordable := state.coins >= price and not maxed
 		button.disabled = not affordable
 		var coin: Icon = row["coin"]
 		coin.color = UiTheme.DARK_ON_BRASS if affordable else UiTheme.BRASS_DIM
+		coin.visible = not maxed
 		coin.queue_redraw()
+	_fit_scroll()
 
 
 ## Меню улучшений: выезжает над нижней панелью (панель с «Обвалом» остаётся доступной), закрывается той же кнопкой.
@@ -140,8 +149,17 @@ func build(panel: Node) -> void:
 			_sfx.play("tick", -6.0)
 			_on_changed.call())
 	column.add_child(autobuy_button)
+	# карточки в прокручиваемом списке: улучшений стало больше, а лист не должен закрывать всё поле
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_child(_scroll)
+	_list = VBoxContainer.new()
+	_list.add_theme_constant_override("separation", UiTheme.SPACE_S)
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(_list)
 	for key in ClickerState.ORDER:
-		column.add_child(_make_row(key))
+		_list.add_child(_make_row(key))
 
 
 func toggle() -> void:
@@ -254,6 +272,8 @@ func _make_row(key: String) -> PanelContainer:
 	pill.add_child(level_label)
 	head.add_child(pill)
 	var effect := UiTheme.make_label("", 26, UiTheme.MUTE)
+	effect.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART        # длинные описания (дополнительные улучшения) переносятся, а не растягивают лист
+	effect.custom_minimum_size.x = 120.0
 	texts.add_child(effect)
 
 	var button := UiTheme.make_key("0", 34, "brass")
@@ -273,8 +293,19 @@ func _make_row(key: String) -> PanelContainer:
 				_pulse(button)
 				_on_bought.call(key))
 	row.add_child(button)
-	rows[key] = {"level": level_label, "effect": effect, "button": button, "coin": coin}
+	rows[key] = {"card": card, "level": level_label, "effect": effect, "button": button, "coin": coin}
 	return card
+
+
+## Высота списка: по содержимому, но не выше MAX_SCROLL_HEIGHT (дальше прокрутка).
+func _fit_scroll() -> void:
+	if _scroll == null or _list == null:
+		return
+	var wanted := minf(_list.get_combined_minimum_size().y, MAX_SCROLL_HEIGHT)
+	if absf(_scroll.custom_minimum_size.y - wanted) > 1.0:
+		_scroll.custom_minimum_size.y = wanted
+		if sheet_open and sheet != null:
+			_set_slide(_slide)
 
 
 ## Короткий «щелчок» кнопки при покупке.
@@ -296,4 +327,30 @@ func _effect_text(key: String, count: int = 1) -> String:
 			return Tr.fmt("%d → %d глыб за обвал", [1 + level, 1 + next])
 		"faces":
 			return Tr.t("ценность руды 1–%d → 1–%d") % [6 + 2 * level, 6 + 2 * next]
-	return Tr.t("×%.2f → ×%.2f ко всему") % [pow(1.5, level), pow(1.5, next)]
+		"mult":
+			return Tr.t("×%.2f → ×%.2f ко всему") % [pow(1.5, level), pow(1.5, next)]
+	if state.upgrade_maxed(key):
+		return Tr.t("Достигнут максимальный уровень") + ": " + _effect_now_text(key, level)
+	return _effect_now_text(key, level) + " → " + _effect_now_text(key, mini(next, state.upgrade_cap(key)), true)
+
+
+## Эффект дополнительного улучшения на уровне level (short — без повторного описания, только число).
+func _effect_now_text(key: String, level: int, short := false) -> String:
+	match key:
+		"crit":
+			return Tr.t("шанс ×5: %d%%") % roundi(100.0 * ClickerState.CRIT_CHANCE_STEP * level)
+		"dbl":
+			return Tr.t("шанс ×2: %d%%") % roundi(100.0 * ClickerState.DOUBLE_CHANCE_STEP * level)
+		"combo":
+			return Tr.t("серия до +%d%%") % roundi(100.0 * ClickerState.COMBO_STEP * level * ClickerState.COMBO_MAX)
+		"nose":
+			return Tr.t("руда в %d%% глыб") % roundi(100.0 * (1.0 - FieldTable.ORE_LIMITS[0] + ClickerState.NOSE_STEP * level))
+		"spark":
+			var seconds := ClickerState.MINI_SECONDS + ClickerState.SPARK_SECONDS_STEP * level
+			var pause := maxf(2.0, ClickerState.MINI_COOLDOWN - ClickerState.SPARK_COOLDOWN_STEP * level)
+			return Tr.t("«Запал» +%.1f с, пауза %.1f с") % [seconds - ClickerState.MINI_SECONDS, pause]
+		"dynamo":
+			if level <= 0:
+				return Tr.t("не куплен")
+			return Tr.t("динамит раз в %d мин") % roundi(maxf(ClickerState.DYNAMO_MIN_PERIOD, ClickerState.DYNAMO_BASE_PERIOD - ClickerState.DYNAMO_STEP * level) / 60.0)
+	return ""

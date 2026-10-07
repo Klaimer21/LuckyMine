@@ -525,7 +525,7 @@ func _branch_card(branch: Dictionary) -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	column.add_child(head)
-	head.add_child(Icon.new().setup(branch["icon"], UiTheme.BRASS, 44))
+	head.add_child(Icon.new().setup(branch["icon"], UiTheme.BRASS, 72))
 	var name_label := UiTheme.make_label(branch["name"], 38, UiTheme.TEXT, true)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(name_label)
@@ -643,7 +643,7 @@ func _ore_card(ore: int) -> void:
 	var badge := PanelContainer.new()
 	badge.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.BG, UiTheme.LINE_STRONG, 1, 14, 10))
 	badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	badge.add_child(Icon.new().setup(ORE_ICONS[ore], ORE_COLORS[ore], 48))
+	badge.add_child(Icon.new().setup(ORE_ICONS[ore], ORE_COLORS[ore], 96))
 	row.add_child(badge)
 	var texts := VBoxContainer.new()
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -670,8 +670,8 @@ func _ore_card(ore: int) -> void:
 		texts.add_child(UiTheme.make_text(Tr.t("Найдено: %d (максимум)") % count, 26, UiTheme.MUTE))
 
 
-## Пиксельный значок предмета (24x24 показывается ×2) заданного цвета-прозрачности; side — сторона в пикселях холста.
-func _item_icon(kind: String, alpha := 1.0, side := 48.0) -> Icon:
+## Пиксельный значок предмета (24x24 показывается ×4 при стороне 96) заданного цвета-прозрачности; side — сторона в пикселях холста.
+func _item_icon(kind: String, alpha := 1.0, side := 96.0) -> Icon:
 	var icon := Icon.new().setup(kind, Color(1, 1, 1, alpha), side)
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return icon

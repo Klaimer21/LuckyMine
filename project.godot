@@ -15,8 +15,8 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="LuckyMine"
-config/version="0.5.0"
 config/description="Idle-кликер про добычу руды: роняйте глыбы, копайте глубже, летите на новые планеты."
+config/version="0.5.0"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 boot_splash/bg_color=Color(0.043, 0.067, 0.063, 1)
@@ -26,7 +26,7 @@ run/quit_on_go_back=false
 
 [autoload]
 
-GodotPlayGameServices="*res://addons/GodotPlayGameServices/scripts/autoloads/godot_play_game_services.gd"
+GodotPlayGameServices="*uid://offv6w8e3un8"
 
 [display]
 
@@ -36,15 +36,7 @@ window/size/window_width_override=540
 window/size/window_height_override=960
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/stretch/scale_mode="fractional"
 window/handheld/orientation=1
-
-[rendering]
-
-renderer/rendering_method="mobile"
-textures/vram_compression/import_etc2_astc=true
-anti_aliasing/quality/msaa_2d=2
-textures/canvas_textures/default_texture_filter=2
 
 [editor_plugins]
 
@@ -53,3 +45,10 @@ enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg")
 [gui]
 
 theme/default_font_generate_mipmaps=true
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=2
+renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
+anti_aliasing/quality/msaa_2d=2

@@ -225,6 +225,8 @@ func _process(delta: float) -> void:
 	_machines.update(delta)
 	for opened in state.update_machine_unlocks():
 		_on_machine_unlocked(str(opened))
+	for opened_upgrade in state.update_upgrade_unlocks():
+		_on_upgrade_unlocked(str(opened_upgrade))
 	_update_depth(delta)
 	_update_abilities(delta)
 	_sheet.update_autobuy(delta)
@@ -424,6 +426,10 @@ func _planet_arrival_line() -> void:
 ## «Золотая лихорадка» и «Динамит»: таймеры, подписи, состояние клавиши.
 func _update_abilities(delta: float) -> void:
 	state.tick_boost(delta)
+	var made_dynamite := state.tick_dynamo(delta)
+	if made_dynamite > 0:
+		_show_toast(Tr.fmt("Динамитчик: +%d динамита", [made_dynamite]))
+		sfx.play("claim", -9.0)
 	var lab_diamonds := state.tick_machines(delta)
 	if lab_diamonds > 0:
 		_show_toast(Tr.fmt("Лаборатория: +%d алмазов", [lab_diamonds]))
@@ -482,6 +488,15 @@ func _apply_season() -> void:
 	_table.set_season_tint(Seasons.tint(id))
 	_season_fx.apply(id, settings.reduce_motion, settings.quality)
 	music.set_season(id)
+
+
+## Открылось дополнительное улучшение: сообщение и подсказка; список в меню обновляется.
+func _on_upgrade_unlocked(key: String) -> void:
+	_show_toast(Tr.t("Новое улучшение: %s") % Tr.t(str(UpgradesSheet.UPGRADE_NAMES[key])))
+	sfx.play("claim", -6.0)
+	_sheet.reset_affordability()
+	_refresh()
+	_say_hint("upgrade_" + key)
 
 
 ## Открылась машина: сообщение, подсказка, ячейка оживает.

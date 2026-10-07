@@ -94,6 +94,7 @@ class Rock extends RefCounted:
 	var spin := 0.0
 	var break_x := 0.0
 	var t := 0.0
+	var crit := 0                        # 2 — критический обвал (×5), 1 — удвоение (×2): для надписи над глыбой
 	var logic_count := 1                 # сколько расчётных глыб склеено в эту (для счётчика «разбито камней»)
 	var extra_ores: Array[int] = []      # руда остальных «настоящих» глыб, из которых собрана эта (учитывается при разбиении)
 
@@ -152,6 +153,7 @@ var _item_cooldown := 0.0
 var _bundles := {}                              # режим -> копится «расчётная» добыча, пока не выкатится на экран одной глыбой
 var _bundle_timer := {}
 var _popup_cooldown := 0.0
+var _combo_label: Label
 var _epoch := 0                                  # растёт при сбросе поля: отложенные вызовы сверяют его
 var _glint_cooldown := 0.0
 
@@ -185,6 +187,14 @@ var _backdrop_front := 0
 
 func setup(p_state: ClickerState) -> void:
 	state = p_state
+	_combo_label = UiTheme.make_label("", 44, Color(1.0, 0.85, 0.35), true)
+	_combo_label.add_theme_constant_override("outline_size", 10)
+	_combo_label.add_theme_color_override("font_outline_color", Color(0.04, 0.07, 0.06))
+	_combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combo_label.size = Vector2(420.0, 60.0)
+	_combo_label.z_index = 25
+	_combo_label.visible = false
+	add_child(_combo_label)
 	_rng.randomize()
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_build_backdrop()
@@ -290,10 +300,12 @@ func tap(screen_pos: Vector2) -> void:
 	if _boss != null and _boss.landed and (_boss.pos + Vector2(0.0, -BOSS_SIZE * 0.5)).distance_to(screen_pos) < BOSS_SIZE * 0.75:
 		hit_boss(1)
 		return
+	state.note_tap()
 	_throw_batch(state.rocks_per_throw(), screen_pos, true)
 
 
 func throw_now() -> void:
+	state.note_tap()
 	_throw_batch(state.rocks_per_throw(), field.get_center(), false)
 
 
@@ -659,6 +671,8 @@ func _process(delta: float) -> void:
 			_spawn_golden()
 			_golden_timer = _rng.randf_range(GOLDEN_MIN, GOLDEN_MAX) * state.golden_interval_factor()
 	var dt := minf(delta, 0.05)
+	state.tick_combo(delta)
+	_update_combo_label()
 	_flush_bundles(dt)
 	_popup_cooldown = maxf(0.0, _popup_cooldown - dt)
 	_glint_cooldown = maxf(0.0, _glint_cooldown - dt)
@@ -679,12 +693,24 @@ func _request(at: Vector2, mode: int, weight: float, by_hand: bool) -> void:
 		landed.emit(payout, false)
 		return
 	if by_hand:
-		payout *= state.hand_payout_factor()                # навык «Рука»
+		payout *= state.hand_payout_factor() * state.combo_bonus()      # навык «Рука» и «Серия касаний»
+	var crit := 0
+	if weight <= 1.0:
+		# одна настоящая глыба: крит ×5 и удвоение ×2 выпадают по-настоящему; склеенные глыбы платят по среднему (то же математическое ожидание)
+		if _rng.randf() < state.crit_chance():
+			payout *= ClickerState.CRIT_MULT
+			crit = 2
+		if _rng.randf() < state.double_chance():
+			payout *= 2.0
+			crit = maxi(crit, 1)
+	else:
+		payout *= state.payout_ev()
 	var rock := Rock.new()
 	rock.mode = mode
 	rock.pos = at
 	rock.weight = weight
 	rock.payout = payout
+	rock.crit = crit
 	rock.size = BASE_SIZE * clampf(1.0 + 0.22 * log(weight) / log(2.0), 1.0, 1.9) * _rng.randf_range(0.9, 1.1)
 	var ratio := float(value) / float(state.max_face())
 	rock.ore = 0
@@ -715,10 +741,11 @@ func _request(at: Vector2, mode: int, weight: float, by_hand: bool) -> void:
 
 ## Склейка расчётных глыб автопотока: суммируются выплата и вес, руда копится списком.
 func _bundle_add(mode: int, rock: Rock) -> void:
-	var bundle: Dictionary = _bundles.get(mode, {"weight": 0.0, "payout": 0.0, "ores": [], "count": 0, "at": rock.pos})
+	var bundle: Dictionary = _bundles.get(mode, {"weight": 0.0, "payout": 0.0, "ores": [], "count": 0, "crit": 0, "at": rock.pos})
 	bundle["weight"] = float(bundle["weight"]) + rock.weight
 	bundle["payout"] = float(bundle["payout"]) + rock.payout
 	bundle["count"] = int(bundle["count"]) + 1
+	bundle["crit"] = maxi(int(bundle["crit"]), rock.crit)
 	if rock.ore > 0:
 		(bundle["ores"] as Array).append(rock.ore)
 	bundle["at"] = rock.pos
@@ -741,6 +768,7 @@ func _flush_bundles(dt: float) -> void:
 		rock.weight = float(bundle["weight"])
 		rock.payout = float(bundle["payout"])
 		rock.logic_count = int(bundle["count"])
+		rock.crit = int(bundle["crit"])
 		rock.size = BASE_SIZE * clampf(1.0 + 0.22 * log(rock.weight) / log(2.0), 1.0, 1.9) * _rng.randf_range(0.9, 1.1)
 		var ores: Array = bundle["ores"]
 		ores.sort()
@@ -852,10 +880,20 @@ func _impact(rock: Rock) -> void:
 		_add_item("nugget" if rock.ore > 0 or _rng.randf() < 0.6 else "rock", from_s)
 	var rate_boost := 1.0 + 0.35 * log(maxf(state.total_rock_rate(), 1.0)) / log(10.0)
 	_shake = minf(0.7, _shake + (0.10 + 0.07 * log(rock.weight + 1.0)) * rate_boost / (1.0 + 0.04 * _rocks.size()))
-	if show_popups and _popup_count < MAX_POPUPS and (_popup_cooldown <= 0.0 or rock.mode != 0):
+	if rock.crit > 0:
+		fx_requested.emit("flash", pos + Vector2(0.0, -rock.size * 0.5), 3.0 if rock.crit == 1 else 4.0)
+		_shake = maxf(_shake, 0.45 if rock.crit == 2 else 0.25)
+	if show_popups and _popup_count < MAX_POPUPS and (_popup_cooldown <= 0.0 or rock.mode != 0 or rock.crit > 0):
 		_popup_cooldown = 0.2
-		_popup("+" + NumberFormat.short(rock.payout), pos + Vector2(_rng.randf_range(-40.0, 40.0), -rock.size * 0.6 - _rng.randf_range(0.0, 50.0)),
-				ORE_COLORS[rock.ore] if rock.ore > 0 else UiTheme.TEXT, rock.ore >= 4)
+		var text := "+" + NumberFormat.short(rock.payout)
+		var color: Color = ORE_COLORS[rock.ore] if rock.ore > 0 else UiTheme.TEXT
+		if rock.crit == 2:
+			text = "×5  " + text
+			color = Color(1.0, 0.55, 0.25)
+		elif rock.crit == 1:
+			text = "×2  " + text
+			color = Color(1.0, 0.85, 0.35)
+		_popup(text, pos + Vector2(_rng.randf_range(-40.0, 40.0), -rock.size * 0.6 - _rng.randf_range(0.0, 50.0)), color, rock.ore >= 4 or rock.crit == 2)
 
 
 # ---------- Крошка ----------
@@ -1141,6 +1179,17 @@ func _break_boss() -> void:
 
 
 # ---------- Тряска и числа ----------
+
+## «Серия ×N» над полем: видна, пока идёт серия касаний и куплена «Серия касаний».
+func _update_combo_label() -> void:
+	var shown := int(state.levels["combo"]) > 0 and state.combo >= 3
+	_combo_label.visible = shown
+	if shown:
+		_combo_label.text = Tr.t("Серия ×%d") % mini(state.combo, ClickerState.COMBO_MAX)
+		_combo_label.position = Vector2(field.position.x + field.size.x * 0.5 - 210.0, field.position.y + 16.0)
+		_combo_label.scale = Vector2.ONE * (1.0 + 0.03 * minf(float(state.combo), 25.0))
+		_combo_label.pivot_offset = Vector2(210.0, 30.0)
+
 
 func _update_shake(delta: float) -> void:
 	_shake = maxf(0.0, _shake - delta * 3.4)

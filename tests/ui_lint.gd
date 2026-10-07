@@ -141,6 +141,16 @@ func _report(kind: String, language: String, screen: String, what: String, node:
 	print("LINT %s [%s] %s: %s (%s %s)" % [kind, language, screen, what, node.get_class(), node.get_rect()])
 
 
+## Видимая часть прокручиваемого списка, в котором лежит узел (пустой прямоугольник, если списка нет).
+func _scroll_clip(node: Node) -> Rect2:
+	var parent := node.get_parent()
+	while parent != null:
+		if parent is ScrollContainer:
+			return (parent as ScrollContainer).get_global_rect()
+		parent = parent.get_parent()
+	return Rect2()
+
+
 func _in_scroll(node: Node) -> bool:
 	var parent := node.get_parent()
 	while parent != null:
@@ -186,11 +196,17 @@ func _lint(scope: Node, language: String, screen: String, is_main: bool) -> void
 					_report("FAIL", language, screen, "текст кнопки «%s» не влезает" % shown.text.left(30), control)
 			if not button.disabled and control.size.y < MIN_TOUCH and not (button is CheckBox):
 				_report("WARN", language, screen, "мелкая кнопка «%s» (%d px)" % [_text_of(button), int(control.size.y)], control)
-	# налезающие друг на друга кнопки
+	# налезающие друг на друга кнопки (в прокручиваемом списке считается только видимая часть кнопки)
 	for i in buttons.size():
 		for j in range(i + 1, buttons.size()):
 			var a := buttons[i].get_global_rect()
 			var b := buttons[j].get_global_rect()
+			var clip_a := _scroll_clip(buttons[i])
+			var clip_b := _scroll_clip(buttons[j])
+			if clip_a.size.x > 0.0:
+				a = a.intersection(clip_a)
+			if clip_b.size.x > 0.0:
+				b = b.intersection(clip_b)
 			var overlap := a.intersection(b)
 			if overlap.size.x > 6.0 and overlap.size.y > 6.0:
 				_report("FAIL", language, screen, "кнопки «%s» и «%s» налезают друг на друга" % [_text_of(buttons[i]), _text_of(buttons[j])], buttons[i])

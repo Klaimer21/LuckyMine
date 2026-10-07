@@ -16,7 +16,7 @@ KEYWORDS = set("""if elif else while for in match return and or not is as await 
 true false null self pass break continue void int float bool String Array Dictionary Callable Variant PI TAU INF NAN super when preload
 load""".split())
 # свойства и методы движка, которыми скрипты пользуются без объекта
-ENGINE_NAMES = set("""draw_set_transform get_node_or_null position size visible modulate scale rotation text disabled color value min_value max_value texture
+ENGINE_NAMES = set("""draw_set_transform get_node_or_null is_nan is_inf position size visible modulate scale rotation text disabled color value min_value max_value texture
 custom_minimum_size mouse_filter pivot_offset size_flags_horizontal size_flags_vertical autowrap_mode horizontal_alignment
 vertical_alignment anchor_left anchor_right anchor_top anchor_bottom offset_left offset_right offset_top offset_bottom grow_vertical
 grow_horizontal global_position bus volume_db pitch_scale stream playing amount lifetime one_shot emitting amount_ratio

@@ -28,6 +28,7 @@ func _init() -> void:
 	_test_machine_tiers()
 	_test_planet_machines()
 	_test_cloud_save()
+	_test_new_upgrades()
 	_test_cart_in_play()
 	_test_seasons()
 	_test_version()
@@ -321,9 +322,9 @@ func _test_machines_stage1() -> void:
 	_check(not state.machine_unlocked("conveyor") and not state.machine_unlocked("blaster") and not state.machine_unlocked("winch"), "zone machines locked in zone 0")
 	state.total_earned = 3.0e6
 	_check(state.update_machine_unlocks() == ["conveyor", "lab"], "Conveyor and Laboratory unlock in zone 1")
-	state.total_earned = 2.0e8
+	state.total_earned = 3.0e8
 	_check(state.update_machine_unlocks() == ["blaster"], "Blaster unlocks in zone 2")
-	state.total_earned = 2.0e11
+	state.total_earned = 5.0e12
 	_check(state.update_machine_unlocks() == ["winch"], "Winch unlocks in zone 3")
 	# Конвейер
 	state.machines["conveyor"] = 10
@@ -349,7 +350,7 @@ func _test_machines_stage1() -> void:
 	_check(absf(winch_state.expedition_remaining() - 4.0 * 3600.0 * 0.8) < 5.0, "expedition started with the Winch is shorter")
 	# сохранение, сброс, планета
 	var saved := ClickerState.new()
-	saved.total_earned = 2.0e11
+	saved.total_earned = 5.0e12
 	saved.update_machine_unlocks()
 	saved.machines["conveyor"] = 7
 	saved.machines["blaster"] = 9
@@ -420,7 +421,7 @@ func _test_machines_stage2() -> void:
 	var saved := ClickerState.new()
 	saved.machines["lab"] = 4
 	saved.machines["cart"] = 2
-	saved.total_earned = 1.0e15
+	saved.total_earned = 1.0e17
 	saved.update_machine_unlocks()
 	saved.lab_progress = 123.0
 	var loaded := ClickerState.new()
@@ -843,4 +844,80 @@ func _test_cloud_save() -> void:
 	_check(after.lifetime_earned >= 5.0e9 and after.lifetime_earned < 5.1e9, "cloud save lands as the local save")
 	_check(not ClickerState.import_save_text('{"payload": "{}", "sig": "nope"}'), "an unsigned cloud save is rejected")
 	_check(not ClickerState.import_save_text("not json"), "garbage cloud data is rejected")
+
+
+## Шесть дополнительных улучшений: открытие по зонам, пределы, эффекты, серия касаний, «Динамитчик», сохранение.
+func _test_new_upgrades() -> void:
+	_check(NumberFormat.short(INF) == "∞" and NumberFormat.short(NAN) == "0", "number format survives infinity and NaN")
+	var state := ClickerState.new()
+	state.coins = 1.0e30
+	_check(not state.upgrade_unlocked("crit") and state.buy_n("crit", 1) == 0, "crit is locked at the start")
+	_check(is_inf(state.cost("crit")) and state.autobuy_step() != "crit", "a locked upgrade has no price and is never auto-bought")
+	state.total_earned = Biomes.LIST[1]["from"] * 1.01
+	var opened := state.update_upgrade_unlocks()
+	_check(opened == ["crit", "combo"], "crit and combo unlock in zone 1")
+	state.total_earned = Biomes.LIST[3]["from"] * 1.01
+	_check(state.update_upgrade_unlocks() == ["nose", "spark", "dbl", "dynamo"], "the others open in zones 2 and 3")
+	_check(state.update_upgrade_unlocks().is_empty(), "unlock is reported once")
+	_check(state.buy_n("crit", 1000) == 20 and state.levels["crit"] == 20, "crit stops at 20 levels")
+	_check(state.buy_n("crit", 1) == 0 and state.upgrade_maxed("crit") and is_inf(state.cost("crit")), "no purchase above the cap")
+	_check(state.max_affordable("dbl") == 20, "max affordable respects the cap")
+	# эффекты
+	_check(is_equal_approx(state.crit_chance(), 0.20) and is_equal_approx(state.double_chance(), 0.0), "crit chance 20% at max")
+	state.levels["dbl"] = 20
+	_check(is_equal_approx(state.payout_ev(), 1.8 * 1.3), "payout EV = crit x double")
+	var plain := ClickerState.new()
+	plain.levels["rain"] = 5
+	var base := plain.base_income_per_second()
+	plain.levels["crit"] = 20
+	_check(is_equal_approx(plain.base_income_per_second(), base * 1.8), "income uses the crit expectation")
+	var shift0 := plain.ore_shift()
+	plain.levels["nose"] = 15
+	_check(is_equal_approx(plain.ore_shift(), shift0 + 0.15), "nose lowers the ore threshold")
+	var sec0 := plain.mini_seconds()
+	var cd0 := plain.mini_cooldown_seconds()
+	plain.levels["spark"] = 10
+	_check(is_equal_approx(plain.mini_seconds(), sec0 + 3.0) and is_equal_approx(plain.mini_cooldown_seconds(), cd0 - 4.0), "spark+: +3 s, pause -4 s")
+	# серия касаний
+	var tapper := ClickerState.new()
+	tapper.levels["combo"] = 10
+	_check(is_equal_approx(tapper.combo_bonus(), 1.0), "no combo, no bonus")
+	for i in 30:
+		tapper.note_tap()
+	_check(tapper.combo == 30 and is_equal_approx(tapper.combo_bonus(), 1.0 + 0.004 * 10 * 25), "combo bonus caps at 25 taps (+100%)")
+	tapper.tick_combo(2.0)
+	_check(tapper.combo == 0 and is_equal_approx(tapper.combo_bonus(), 1.0), "the combo ends after a pause")
+	tapper.note_tap()
+	tapper.tick_combo(1.0)
+	tapper.note_tap()
+	_check(tapper.combo == 2, "taps inside the window continue the combo")
+	# Динамитчик
+	var dyna := ClickerState.new()
+	dyna.dynamite_stock = 0
+	_check(dyna.tick_dynamo(10000.0) == 0 and dyna.dynamite_stock == 0, "no dynamo, no dynamite")
+	dyna.levels["dynamo"] = 10
+	_check(is_equal_approx(dyna.dynamo_period(), 300.0), "level 10 gives dynamite every 5 minutes")
+	_check(dyna.tick_dynamo(299.0) == 0 and dyna.tick_dynamo(2.0) == 1 and dyna.dynamite_stock == 1, "dynamite builds up with time")
+	dyna.dynamite_stock = dyna.dynamite_max()
+	_check(dyna.tick_dynamo(1000.0) == 0 and dyna.dynamite_stock == dyna.dynamite_max(), "a full store takes no more dynamite")
+	# сохранение
+	var saved := ClickerState.new()
+	saved.upgrades_unlocked["crit"] = true
+	saved.levels["crit"] = 7
+	saved.levels["dbl"] = 999
+	saved.dynamo_progress = 42.0
+	var loaded := ClickerState.new()
+	loaded.load_from_text(saved.serialize())
+	_check(loaded.upgrade_unlocked("crit") and loaded.levels["crit"] == 7 and is_equal_approx(loaded.dynamo_progress, 42.0), "new upgrades persist")
+	_check(loaded.levels["dbl"] <= 20, "a hostile level is clamped to the cap")
+	var old_save := ClickerState.new()
+	old_save.load_from_text('{"levels": {"rain": 3}}')
+	_check(old_save.levels["crit"] == 0 and not old_save.upgrade_unlocked("combo"), "old saves start the new upgrades at zero")
+	# Новая шахта: уровни сбрасываются, открытие остаётся
+	var mine := ClickerState.new()
+	mine.total_earned = 1.0e12
+	mine.update_upgrade_unlocks()
+	mine.levels["crit"] = 5
+	mine.prestige()
+	_check(mine.levels["crit"] == 0 and mine.upgrade_unlocked("crit"), "New Mine resets new upgrades but keeps them unlocked")
 

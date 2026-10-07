@@ -20,6 +20,11 @@ DRILL = [0.0, 0.10, 0.20, 0.35, 0.60]
 SKILL_COSTS = [1, 2, 4, 6]
 YIELD_COSTS = [1500, 3000, 6000, 12000]        # ветка «Добыча» (после ядра)
 YIELD_BONUS = [1.0, 1.15, 1.35, 1.6, 2.0]
+# Новые улучшения (7 октября 2026): base, growth, предел уровня, зона открытия. Должны совпадать с ClickerState.UPGRADES и Upgrades.
+NEW_UP = {"crit": (5000.0, 2.2, 20, 1), "dbl": (30000.0, 2.3, 20, 3), "nose": (12000.0, 2.0, 15, 2), "spk": (9000.0, 2.1, 10, 2)}
+CRIT_CHANCE, CRIT_MULT, DBL_CHANCE, NOSE_STEP = 0.01, 5.0, 0.015, 0.01
+SPARK_SEC_STEP, SPARK_CD_STEP = 0.3, 0.4
+USE_NEW = True
 USE_YIELD = True
 RATE_CAP = 35.0                      # глыб в секунду на картинке (высокое качество; на среднем 20, на низком 10)
 RUSH_SECONDS, RUSH_FACTOR = 300.0, 7.0
@@ -29,13 +34,13 @@ TARGET_H = (1 / 6, 0.75, 3, 10, 48, 168)
 _probs = {}
 
 
-def ore_probs(m, zone, bundled, luck, vis):
-    key = (m, zone, bundled, luck, round(vis, 1))
+def ore_probs(m, zone, bundled, luck, vis, shift=0.0):
+    key = (m, zone, bundled, luck, round(vis, 1), round(shift, 3))
     if key in _probs:
         return _probs[key]
     counts = [0] * 5
     for v in range(1, m + 1):
-        tier = sum(1 for x in ORE_LIMITS if v / m >= x)
+        tier = sum(1 for x in ORE_LIMITS if v / m >= x - shift)
         if bundled:
             tier = max(tier, 2)
         counts[min(tier, MAX_ORE[zone])] += 1
@@ -46,13 +51,13 @@ def ore_probs(m, zone, bundled, luck, vis):
     return _probs[key]
 
 
-def spark_factor(vis, p, luck):
+def spark_factor(vis, p, luck, spk=0):
     """Средний множитель от «Золотого запала»: после запала перерыв MINI_COOLDOWN, потом ждём следующее золото."""
     gold_rate = vis * p[3]
     if gold_rate <= 0:
         return 1.0
-    seconds = MINI_SECONDS + (2.0 if luck >= 2 else 0.0)
-    uptime = seconds / (seconds + MINI_COOLDOWN + 1.0 / gold_rate)
+    seconds = MINI_SECONDS + (2.0 if luck >= 2 else 0.0) + SPARK_SEC_STEP * spk
+    uptime = seconds / (seconds + max(2.0, MINI_COOLDOWN - SPARK_CD_STEP * spk) + 1.0 / gold_rate)
     return 1.0 + (MINI_FACTOR - 1.0) * uptime
 
 
@@ -66,7 +71,7 @@ def simulate(TH, FAC, collection=True, skills=True, rush=False, hours=24 * 8, ma
     """init: состояние с прежней планеты {finds, drill, luck, points}; scale — во сколько раз пороги зон выше;
     start_levels — стартовые уровни «Камнепада» и «Граней» (мета-улучшение); stop_core — остановиться, дойдя до ядра."""
     TH = [x * scale for x in TH]
-    l = {"rain": start_levels, "faces": start_levels, "mult": 0}
+    l = {"rain": start_levels, "faces": start_levels, "mult": 0, "crit": 0, "dbl": 0, "nose": 0, "spk": 0}
     state = {}
     coins = total = 0.0
     veins = 0
@@ -83,43 +88,64 @@ def simulate(TH, FAC, collection=True, skills=True, rush=False, hours=24 * 8, ma
     yld = init.get("yield", 0) if init else 0
     core_time = None
     next_rush = 0.0
+    new_log = {}
     while t < hours * 3600:
         zone = bisect.bisect_right(TH, total)
-        rate = (1 + 0.8 * l["rain"]) * (1 + DRILL[drill])
-        vis = min(rate, RATE_CAP)
-        weight = math.ceil(rate / RATE_CAP) if rate > RATE_CAP else 1
-        m = 6 + 2 * l["faces"]
-        p, pd = ore_probs(m, zone, weight > 1, luck >= 1, vis)
+
+        def snapshot():
+            """Доход без постоянных множителей (жилы, зона, коллекция, добыча-навык) для сравнения покупок и сам доход."""
+            rate_ = (1 + 0.8 * l["rain"]) * (1 + DRILL[drill])
+            vis_ = min(rate_, RATE_CAP)
+            weight_ = math.ceil(rate_ / RATE_CAP) if rate_ > RATE_CAP else 1
+            m_ = 6 + 2 * l["faces"]
+            shift_ = NOSE_STEP * l["nose"] if USE_NEW else 0.0
+            p_, pd_ = ore_probs(m_, zone, weight_ > 1, luck >= 1, vis_, shift_)
+            spark_ = spark_factor(vis_, p_, luck, l["spk"] if USE_NEW else 0)
+            ev_ = (1 + CRIT_CHANCE * l["crit"] * (CRIT_MULT - 1)) * (1 + DBL_CHANCE * l["dbl"]) if USE_NEW else 1.0
+            return rate_, vis_, m_, p_, pd_, spark_, ev_
+
+        rate, vis, m, p, pd, spark, ev = snapshot()
         coll = collection_mult(finds) if collection else 1.0
-        spark = spark_factor(vis, p, luck)
-        base_income = rate * (1 + m) / 2 * 1.5 ** l["mult"] * (1 + vstep * veins) * FAC[zone] * coll * (1 + 2 * pd) * spark * income_mult * YIELD_BONUS[yld]
+        const = (1 + vstep * veins) * FAC[zone] * coll * income_mult * YIELD_BONUS[yld]
+        base_income = rate * (1 + m) / 2 * 1.5 ** l["mult"] * const * (1 + 2 * pd) * spark * ev
 
         # покупки улучшений: жадно по приросту дохода на монету
         while True:
             best, bs = None, 0.0
-            for k in UP:
-                c = UP[k][0] * UP[k][1] ** l[k]
+            cur_income = rate * (1 + m) / 2 * 1.5 ** l["mult"] * (1 + 2 * pd) * spark * ev
+            candidates = [(k, UP[k][0] * UP[k][1] ** l[k]) for k in UP]
+            if USE_NEW:
+                for k, (nb, ng, cap, uz) in NEW_UP.items():
+                    if (zone >= uz or init is not None) and l[k] < cap:        # на следующей планете открытые улучшения остаются
+                        candidates.append((k, nb * ng ** l[k]))
+            for k, c in candidates:
                 if c > coins:
                     continue
                 l[k] += 1
-                rate2 = (1 + 0.8 * l["rain"]) * (1 + DRILL[drill])
-                m2 = 6 + 2 * l["faces"]
-                gain = rate2 * (1 + m2) / 2 * 1.5 ** l["mult"] - rate * (1 + m) / 2 * 1.5 ** (l["mult"] - (1 if k == "mult" else 0))
+                r2, v2, m2, p2, pd2, spark2, ev2 = snapshot()
+                new_income = r2 * (1 + m2) / 2 * 1.5 ** l["mult"] * (1 + 2 * pd2) * spark2 * ev2
                 l[k] -= 1
-                # прирост относительно прежнего дохода (множители одинаковы)
+                if k in UP:
+                    # прежние улучшения сравниваются как раньше (без руды, запала и крита): перебор порядка покупок не меняется
+                    base_old = rate * (1 + m) / 2 * 1.5 ** (l["mult"])
+                    l[k] += 1
+                    mult_after = 1.5 ** l["mult"]
+                    rate_a = (1 + 0.8 * l["rain"]) * (1 + DRILL[drill])
+                    m_a = 6 + 2 * l["faces"]
+                    l[k] -= 1
+                    gain = rate_a * (1 + m_a) / 2 * mult_after - rate * (1 + m) / 2 * 1.5 ** l["mult"]
+                else:
+                    gain = new_income - cur_income
                 if gain / c > bs:
                     bs, best = gain / c, k
             if best is None:
                 break
-            coins -= UP[best][0] * UP[best][1] ** l[best]
+            coins -= (UP[best][0] * UP[best][1] ** l[best]) if best in UP else NEW_UP[best][0] * NEW_UP[best][1] ** l[best]
             l[best] += 1
-            rate = (1 + 0.8 * l["rain"]) * (1 + DRILL[drill])
-            m = 6 + 2 * l["faces"]
-            spark = spark_factor(vis, p, luck)
-            base_income = rate * (1 + m) / 2 * 1.5 ** l["mult"] * (1 + vstep * veins) * FAC[zone] * coll * (1 + 2 * pd) * spark * income_mult * YIELD_BONUS[yld]
-            vis = min(rate, RATE_CAP)
-            weight = math.ceil(rate / RATE_CAP) if rate > RATE_CAP else 1
-            p, pd = ore_probs(m, zone, weight > 1, luck >= 1, vis)
+            if best in NEW_UP and l[best] == NEW_UP[best][2]:
+                new_log[best] = round(t / 3600, 2)
+            rate, vis, m, p, pd, spark, ev = snapshot()
+            base_income = rate * (1 + m) / 2 * 1.5 ** l["mult"] * const * (1 + 2 * pd) * spark * ev
         step = min(dt, 10.0 if rush else dt)
         boosted = 0.0
         if rush:
@@ -144,7 +170,7 @@ def simulate(TH, FAC, collection=True, skills=True, rush=False, hours=24 * 8, ma
         if gain >= max(MIN_GAIN, RATIO * veins):
             veins = pot
             prest.append((round(t / 3600, 2), gain, veins))
-            l = {"rain": start_levels, "faces": start_levels, "mult": 0}
+            l = {"rain": start_levels, "faces": start_levels, "mult": 0, "crit": 0, "dbl": 0, "nose": 0, "spk": 0}
             coins = 0.0
             if skills:
                 points += 1 + int(math.sqrt(gain))
@@ -174,6 +200,7 @@ def simulate(TH, FAC, collection=True, skills=True, rush=False, hours=24 * 8, ma
     marks["core_time"] = core_time
     marks["state"] = state
     marks["notes"] = notes
+    marks["new_maxed"] = new_log
     return prest, marks
 
 
