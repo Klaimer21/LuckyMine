@@ -16,7 +16,17 @@ signal meta_purchase(id: String)
 signal planet_requested
 
 const ORE_NAMES := {1: "Медь", 2: "Железо", 3: "Золото", 4: "Алмаз"}
-const ORE_ICONS := {1: "rock", 2: "rock", 3: "rock", 4: "gem"}
+## Пиксельные значки предметов: магазин и реклама (по ключу покупки), достижения (по виду счётчика), экспедиции.
+const SHOP_ICONS := {
+	"rush": "px_potion", "dynamite": "px_bomb", "golden": "ore_gold", "boss": "px_shield", "expedition_skip": "px_hourglass",
+	"skill_point": "px_scroll", "diamonds": "gem", "machines": "gear", "expedition": "px_hourglass",
+}
+const ACHIEVEMENT_ICONS := {
+	"zone": "px_map", "prestige": "px_hourglass", "gold": "px_bag", "diamond": "gem", "golden": "px_crown", "dynamite": "px_bomb",
+	"boss": "px_shield", "planet": "px_rocket", "rocks": "px_hammer", "meta": "px_key", "set": "px_trophy",
+}
+const TRIP_ICONS := ["trip_scout", "trip_descent", "trip_deep"]
+const ORE_ICONS := {1: "ore_copper", 2: "ore_iron", 3: "ore_gold", 4: "ore_diamond"}
 const ORE_COLORS := {1: Color(0.78, 0.47, 0.30), 2: Color(0.50, 0.58, 0.68), 3: Color(0.92, 0.74, 0.32),
 		4: Color(0.55, 0.86, 0.90)}
 
@@ -82,7 +92,7 @@ func rebuild() -> void:
 	var tab_list := [[0, "Руда"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [3, "Награды"], [4, "Планета"]]
 	for entry in tab_list:
 		var id: int = entry[0]
-		var tab_button := UiTheme.make_key(str(entry[1]), 26, "felt" if id == _tab else "dark")
+		var tab_button := UiTheme.make_key(str(entry[1]), 21, "felt" if id == _tab else "dark")
 		if id != _tab:
 			# неактивные вкладки светлее общего «приглушённого» цвета: иначе подписи плохо читаются на телефоне
 			for color_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
@@ -157,6 +167,42 @@ func _build_ore() -> void:
 	var set_text := Tr.t("Все руды на уровне %d: ×%.2f") % [full, 1.0 + ClickerState.FULL_SET_STEP * full]
 	_content.add_child(UiTheme.make_label(Tr.t("Полный набор") + "  ·  " + set_text, 28, UiTheme.BRASS))
 	_content.add_child(UiTheme.make_text(Tr.t("Коллекция даёт навсегда: ×%.2f") % state.collection_multiplier(), 28, UiTheme.MUTE))
+	_build_relics()
+
+
+## Диковинки из экспедиций: четыре клетки, ненайденные тёмные.
+func _build_relics() -> void:
+	_section("Диковинки")
+	var note := UiTheme.make_text("Их приносят шахтёры из экспедиций: иногда, вместе с добычей. Каждая разновидность даёт +2% к доходу, полный набор ещё +4%.", 26, UiTheme.MUTE)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(note)
+	_content.add_child(UiTheme.make_label(Tr.t("Бонус диковинок: ×%.2f") % state.relic_multiplier(), 28, UiTheme.BRASS))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", UiTheme.SPACE_M)
+	grid.add_theme_constant_override("v_separation", UiTheme.SPACE_M)
+	_content.add_child(grid)
+	for id in ClickerState.RELICS:
+		var count := int(state.relics[id])
+		var card := PanelContainer.new()
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.SURFACE, UiTheme.BRASS_DIM if count > 0 else UiTheme.LINE, 2, 18, 12))
+		grid.add_child(card)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		card.add_child(row)
+		var icon := Icon.new().setup(Relics.icon(str(id)), Color(1, 1, 1, 1.0 if count > 0 else 0.22), 96)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(icon)
+		var texts := VBoxContainer.new()
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.alignment = BoxContainer.ALIGNMENT_CENTER
+		texts.add_theme_constant_override("separation", 0)
+		row.add_child(texts)
+		var title := UiTheme.make_label(Relics.name_of(str(id)) if count > 0 else "???", 24, UiTheme.TEXT if count > 0 else UiTheme.MUTE)
+		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		texts.add_child(title)
+		texts.add_child(UiTheme.make_label("×%d" % count if count > 0 else Tr.t("не найдена"), 28, UiTheme.BRASS if count > 0 else UiTheme.MUTE))
 
 
 func _process(delta: float) -> void:
@@ -195,7 +241,7 @@ func _hours_text(hours: float) -> String:
 
 ## Ожидаемая добыча похода (с бонусом мета-улучшения «Снаряжение походов»), как её выдаст claim_expedition().
 func _expedition_loot(data: Dictionary) -> String:
-	var bonus := 1.0 + 0.5 * int(state.meta["expedition"])
+	var bonus := state.expedition_bonus()
 	var coins := maxf(100.0, state.income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
 	return Tr.fmt("≈%s монет · %d алмазов · %d находок", [NumberFormat.short(coins),
 			int(round(float(data["diamonds"]) * bonus)), int(round(float(data["finds"]) * bonus))])
@@ -213,7 +259,11 @@ func _build_expeditions() -> void:
 		var column := VBoxContainer.new()
 		column.add_theme_constant_override("separation", UiTheme.SPACE_S)
 		card.add_child(column)
-		column.add_child(UiTheme.make_label(data["name"], 38, UiTheme.TEXT, true))
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 16)
+		head.add_child(_item_icon(TRIP_ICONS[mini(state.expedition_type, TRIP_ICONS.size() - 1)], 1.0, 96.0))
+		head.add_child(UiTheme.make_label(data["name"], 38, UiTheme.TEXT, true))
+		column.add_child(head)
 		if _was_ready:
 			column.add_child(UiTheme.make_label("Шахтёры вернулись!", 30, UiTheme.BRASS))
 			var claim := UiTheme.make_key("Забрать добычу", 34, "brass")
@@ -257,6 +307,7 @@ func _build_expeditions() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 16)
 		card.add_child(row)
+		row.add_child(_item_icon(TRIP_ICONS[mini(i, TRIP_ICONS.size() - 1)], 1.0, 96.0))
 		var texts := VBoxContainer.new()
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.add_theme_constant_override("separation", 0)
@@ -293,6 +344,7 @@ func _build_achievements() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 16)
 		card.add_child(row)
+		row.add_child(_item_icon(ACHIEVEMENT_ICONS.get(str(achievement["kind"]), "px_trophy"), 1.0 if done else 0.35))
 		var texts := VBoxContainer.new()
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.add_theme_constant_override("separation", 2)
@@ -327,6 +379,9 @@ func _build_planet() -> void:
 	_content.add_child(head)
 	head.add_child(Icon.new().setup("spark", Color(0.55, 0.86, 0.90), 48))
 	head.add_child(UiTheme.make_label(str(state.stardust), 56, UiTheme.TEXT, true))
+	var world := Biomes.planet_picture(state.planet, 96.0)
+	if world != null:
+		head.add_child(world)
 	var planet_label := UiTheme.make_label(Tr.t("Планета") + ": " + Tr.t(Biomes.planet_name(state.planet)), 30, UiTheme.MUTE)
 	planet_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	planet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -523,6 +578,7 @@ func _ad_card(placement: String, title: String, detail: String) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	card.add_child(row)
+	row.add_child(_item_icon(SHOP_ICONS.get(placement, "px_gift")))
 	var texts := VBoxContainer.new()
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	texts.add_theme_constant_override("separation", 0)
@@ -547,6 +603,7 @@ func _shop_card(item: String, title: String, detail: String) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	card.add_child(row)
+	row.add_child(_item_icon(SHOP_ICONS.get(item, "px_gem") if not item.begins_with("style_") else "px_gem"))
 	var texts := VBoxContainer.new()
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	texts.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -611,3 +668,10 @@ func _ore_card(ore: int) -> void:
 		texts.add_child(UiTheme.make_bar(float(count - previous) / float(next_need - previous), ORE_COLORS[ore], 10))
 	else:
 		texts.add_child(UiTheme.make_text(Tr.t("Найдено: %d (максимум)") % count, 26, UiTheme.MUTE))
+
+
+## Пиксельный значок предмета (24x24 показывается ×2) заданного цвета-прозрачности; side — сторона в пикселях холста.
+func _item_icon(kind: String, alpha := 1.0, side := 48.0) -> Icon:
+	var icon := Icon.new().setup(kind, Color(1, 1, 1, alpha), side)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return icon

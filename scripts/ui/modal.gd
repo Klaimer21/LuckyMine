@@ -27,7 +27,7 @@ func _init() -> void:
 	panel.custom_minimum_size.x = 900
 	var style := StyleBoxFlat.new()
 	style.bg_color = UiTheme.SURFACE
-	style.set_corner_radius_all(14)
+	UiTheme.pixelize(style, 10)
 	style.set_border_width_all(1)
 	style.border_color = UiTheme.BRASS_DIM
 	style.set_content_margin_all(40)

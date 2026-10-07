@@ -22,6 +22,10 @@ Godot «Exporting for Android» (docs.godotengine.org), если шаг не с�
 3. В Godot справа вверху появится значок Android (Remote Debug): нажмите — игра соберётся и запустится на телефоне.
    Либо Проект → Экспорт → Export Project → `build/LuckyMine.apk` и `adb install -r build/LuckyMine.apk`.
 
+## Облачное сохранение (Google Play Игры)
+Нужна Gradle-сборка (Проект → Установить шаблон сборки Android) и ID игры из Play Console в параметре `godot_play_game_services/game_id`
+пресета. Подробные шаги и что проверить: docs/CLOUD_SAVE.md, раздел 4.
+
 ## Что смотреть на телефоне
 - **FPS**: Настройки → «Показывать FPS»; «Тест нагрузки» на 15 секунд для выбранного качества. Для телефона начните
   со «Среднее» и сглаживания «Авто» или MSAA 2x.

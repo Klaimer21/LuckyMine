@@ -9,7 +9,7 @@ var offline_earned := 0.0             # монеты за время офлай�
 
 var _settings: Settings
 var _sfx: Sfx
-var _table: MineTable
+var _table: FieldTable
 var _viewport: Viewport
 var _toast: Callable
 var _refresh: Callable
@@ -20,7 +20,7 @@ var _ads := Ads.new()
 var _offline_doubled := false
 
 
-func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, sound: Sfx, mine_table: MineTable,
+func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, sound: Sfx, mine_table: FieldTable,
 		view: Viewport, show_toast: Callable, refresh: Callable, rebuild_journal: Callable, on_dynamite_changed: Callable,
 		current_biome: Callable) -> Rewards:
 	host = host_node
@@ -55,6 +55,10 @@ func on_expedition_claim() -> void:
 	state.save()
 	_sfx.play("claim", -4.0)
 	var modal := Modal.new()
+	var back := Companion.portrait(240.0, "tired")
+	if back != null:
+		back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		modal.body.add_child(back)
 	modal.body.add_child(UiTheme.make_label("Экспедиция вернулась", 50, UiTheme.TEXT, true))
 	modal.body.add_child(UiTheme.make_label(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])), 34, UiTheme.BRASS))
 	if int(result["diamonds"]) > 0:
@@ -63,9 +67,25 @@ func on_expedition_claim() -> void:
 		modal.body.add_child(UiTheme.make_label(Tr.t("Динамит +%d") % int(result["dynamite"]), 34, UiTheme.TEXT))
 	var found: Dictionary = result["found"]
 	var names := ["Медь", "Железо", "Золото", "Алмаз"]
+	var ore_icons := ["ore_copper", "ore_iron", "ore_gold", "ore_diamond"]
 	for ore in found:
 		if int(found[ore]) > 0:
-			modal.body.add_child(UiTheme.make_label("%s: +%d" % [Tr.t(names[int(ore) - 1]), int(found[ore])], 28, UiTheme.MUTE))
+			var line := HBoxContainer.new()
+			line.add_theme_constant_override("separation", 12)
+			line.alignment = BoxContainer.ALIGNMENT_CENTER
+			line.add_child(Icon.new().setup(ore_icons[int(ore) - 1], Color.WHITE, 48))
+			line.add_child(UiTheme.make_label("%s: +%d" % [Tr.t(names[int(ore) - 1]), int(found[ore])], 28, UiTheme.MUTE))
+			modal.body.add_child(line)
+	# изредка шахтёры приносят диковинку: просто приятная картинка (в журнал и экономику не пишется)
+	if str(result.get("relic", "")) != "":
+		var relic: Array = [Relics.icon(str(result["relic"])), Relics.name_of(str(result["relic"]))]
+		modal.body.add_child(UiTheme.make_label("Шахтёры принесли диковинку", 26, UiTheme.BRASS))
+		var relic_row := HBoxContainer.new()
+		relic_row.add_theme_constant_override("separation", 12)
+		relic_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		relic_row.add_child(Icon.new().setup(str(relic[0]), Color.WHITE, 96))
+		relic_row.add_child(UiTheme.make_label(str(relic[1]), 28, UiTheme.TEXT))
+		modal.body.add_child(relic_row)
 	var close := UiTheme.make_button("Закрыть", true, 34)
 	close.pressed.connect(modal.close)
 	modal.body.add_child(close)
@@ -97,7 +117,7 @@ func grant_ad_reward(placement: String) -> void:
 			state.diamonds += gems
 			_toast.call(Tr.t("Алмазы: +%d") % gems)
 		"machines":
-			state.machine_boost_time = Machines.AD_BOOST_SECONDS
+			state.machine_boost_time = state.machine_boost_seconds()
 			_toast.call(Tr.t("Машины ×2 на 5 минут"))
 		"expedition":
 			if not state.expedition_active() or state.expedition_ready():
@@ -169,12 +189,12 @@ func on_shop_purchase(item: String) -> void:
 	match item:
 		"golden":
 			if not _table.summon_golden():
-				_toast.call(Tr.t("Золотая глыба уже на столе"))
+				_toast.call(Tr.t("Золотая глыба уже на поле"))
 				return
 			state.diamonds -= cost
 		"boss":
 			if not _table.summon_boss(_biome.call()):
-				_toast.call(Tr.t("Хранитель уже на столе"))
+				_toast.call(Tr.t("Хранитель уже на поле"))
 				return
 			state.diamonds -= cost
 		"expedition_skip":

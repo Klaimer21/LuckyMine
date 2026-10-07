@@ -56,6 +56,18 @@ const DYNAMITE_CAPS := [10, 20, 20, 20, 30]   # вместимость скла�
 const DYNAMITE_SECONDS := [30.0, 30.0, 38.0, 38.0, 38.0]
 const DYNAMITE_CHAIN := 0.3                # доля награды во втором взрыве (с 3-го уровня)
 const START_SKILL_POINTS := 2
+## Новые ветки навыков (по уровню 0…4): «Рука», «Походы», «Хранители», «Машины», «Смена».
+const HAND_PAYOUT := [1.0, 1.25, 1.25, 1.6, 2.0]       # монеты за глыбы от касаний
+const HAND_EXTRA := [0, 0, 1, 1, 2]                    # дополнительные глыбы за касание
+const TRIPS_TIME := [1.0, 0.85, 0.85, 0.85, 0.85]
+const TRIPS_RELIC := [0.40, 0.40, 0.55, 0.55, 1.0]     # шанс диковинки за поход
+const TRIPS_LOOT := [0.0, 0.0, 0.0, 0.3, 0.3]          # прибавка к добыче походов
+const GUARD_HP := [1.0, 0.85, 0.85, 0.85, 0.68]
+const GUARD_REWARD := [1.0, 1.0, 1.25, 1.25, 1.5625]
+const GOLDEN_PAYOUT := [1.0, 1.0, 1.0, 1.5, 1.5]
+const SHIFT_CAP_HOURS := [0.0, 2.0, 2.0, 2.0, 6.0]
+const SHIFT_INCOME := [1.0, 1.0, 1.15, 1.15, 1.3]
+const SHIFT_LAB_CAP := [0, 0, 0, 12, 12]               # прибавка к офлайн-алмазам Лаборатории
 const ORDER := ["rain", "tap", "faces", "mult"]
 const MAX_BULK := 10000                  # потолок режима «Макс» за одну покупку
 
@@ -69,7 +81,7 @@ var ending_seen := false
 var veins := 0                     # жилы: постоянный множитель дохода
 var prestiges := 0
 var levels := {"rain": 0, "tap": 0, "faces": 0, "mult": 0}
-var machines := {"crusher": 0, "conveyor": 0, "lab": 0, "blaster": 0, "winch": 0, "cart": 0}   # уровни машин (сбрасываются с «Новой шахтой»)
+var machines := Machines.blank_levels()   # уровни машин (сбрасываются с «Новой шахтой»)
 var machines_unlocked := {}            # id -> true: открытые машины (остаются навсегда)
 var machine_boost_time := 0.0          # реклама «Машины ×2»: секунд осталось (не сохраняется)
 var lab_progress := 0.0                # секунд накоплено до следующего алмаза Лаборатории
@@ -83,7 +95,7 @@ var ad_ready_at := {}                # место рекламы -> unix-вре�
 var offline_away := 0.0              # сколько секунд игрока не было при последней загрузке (с учётом лимита)
 var offline_capped := false          # время офлайна упёрлось в лимит
 var skill_points := START_SKILL_POINTS
-var skills := {"drill": 0, "dynamite": 0, "luck": 0, "yield": 0}
+var skills := {"drill": 0, "dynamite": 0, "luck": 0, "yield": 0, "hand": 0, "trips": 0, "guard": 0, "machines": 0, "shift": 0}
 var golden_caught := 0
 var dynamite_used := 0
 var dynamite_stock := START_DYNAMITE
@@ -104,6 +116,10 @@ var rocks_broken := 0
 var lifetime_earned := 0.0
 var diamonds := 0                  # вторая валюта: выпадает из алмазов-находок
 var finds := {1: 0, 2: 0, 3: 0, 4: 0}
+## Диковинки из экспедиций (коллекция, не сбрасывается престижем): виды и сколько найдено каждой.
+const RELICS := ["map", "coin", "bone", "crystal"]
+const RELIC_CHANCE := 0.4                     # шанс диковинки за экспедицию
+var relics := {"map": 0, "coin": 0, "bone": 0, "crystal": 0}
 var boost_factor := BOOST_FACTOR
 var mini_cooldown := 0.0
 var skill_points_bought := 0         # купленные за алмазы очки навыков (цена растёт)
@@ -120,7 +136,7 @@ func rain_rate() -> float:
 ## Глыбы в секунду от Дробилки: доля потока «Камнепада» за каждый уровень машины (и навык «Бур» действует на оба потока).
 func crusher_rate() -> float:
 	var info: Dictionary = Machines.data("crusher")
-	return float(info["step"]) * machine_level("crusher") * (1.0 + 0.8 * levels["rain"]) * (1.0 + float(DRILL_BONUS[skill_level("drill")])) * machine_boost_factor()
+	return float(info["step"]) * machine_level("crusher") * (1.0 + 0.8 * levels["rain"]) * (1.0 + float(DRILL_BONUS[skill_level("drill")])) * machine_boost_factor() * (1.15 if skill_level("machines") >= 1 else 1.0)
 
 
 ## Все глыбы в секунду: «Камнепад» плюс машины.
@@ -138,7 +154,7 @@ func lab_interval() -> float:
 	var level := machine_level("lab")
 	if level < 1:
 		return 0.0
-	return maxf(Machines.LAB_MIN_PERIOD, Machines.LAB_BASE_PERIOD - float(Machines.data("lab")["step"]) * level)
+	return maxf(Machines.LAB_MIN_PERIOD, Machines.LAB_BASE_PERIOD - float(Machines.data("lab")["step"]) * level) * (0.8 if skill_level("machines") >= 4 else 1.0)
 
 
 ## Вагонетка: пауза между «Золотыми запалами» и их длительность.
@@ -164,7 +180,7 @@ func tick_machines(delta: float) -> int:
 
 ## Конвейер: на сколько опускаются пороги ценности, с которых в глыбе есть руда (доля от максимума).
 func ore_shift() -> float:
-	return float(Machines.data("conveyor")["step"]) * machine_level("conveyor")
+	return (float(Machines.data("conveyor")["step"]) * machine_level("conveyor") + float(Machines.data("rover")["step"]) * machine_level("rover")) * (1.25 if skill_level("machines") >= 4 else 1.0)
 
 
 ## Подрывник: секунд между малыми взрывами (0 — не куплен).
@@ -172,7 +188,7 @@ func blaster_interval() -> float:
 	var level := machine_level("blaster")
 	if level < 1:
 		return 0.0
-	return maxf(Machines.BLASTER_MIN_PERIOD, Machines.BLASTER_BASE_PERIOD - float(Machines.data("blaster")["step"]) * level) / machine_boost_factor()
+	return maxf(Machines.BLASTER_MIN_PERIOD, Machines.BLASTER_BASE_PERIOD - float(Machines.data("blaster")["step"]) * level) / machine_boost_factor() * (0.85 if skill_level("machines") >= 2 else 1.0)
 
 
 ## Доля дохода от глыб, которую в среднем добавляют взрывы Подрывника.
@@ -183,7 +199,7 @@ func blaster_share() -> float:
 
 ## Лебёдка: во сколько раз походы короче обычного.
 func expedition_time_factor() -> float:
-	return 1.0 - float(Machines.data("winch")["step"]) * machine_level("winch")
+	return (1.0 - float(Machines.data("winch")["step"]) * machine_level("winch")) * float(TRIPS_TIME[skill_level("trips")])
 
 
 ## Длительность похода типа index с учётом Лебёдки.
@@ -192,7 +208,32 @@ func expedition_total_seconds(index: int) -> float:
 
 
 func rocks_per_throw() -> int:
-	return 1 + levels["tap"]
+	return 1 + levels["tap"] + int(HAND_EXTRA[skill_level("hand")])
+
+
+## Навык «Рука»: во сколько раз больше монет за глыбы от касаний.
+func hand_payout_factor() -> float:
+	return float(HAND_PAYOUT[skill_level("hand")])
+
+
+## Навык «Хранители»: золотая глыба, пойманная касанием, платит больше.
+func golden_payout_factor() -> float:
+	return float(GOLDEN_PAYOUT[skill_level("guard")]) * (1.0 + float(Machines.data("catapult")["step"]) * machine_level("catapult"))
+
+
+## Реклама «Машины ×2» идёт столько секунд (навык «Машины» удваивает).
+func machine_boost_seconds() -> float:
+	return Machines.AD_BOOST_SECONDS * (2.0 if skill_level("machines") >= 3 else 1.0)
+
+
+## Шанс диковинки за поход (навык «Походы»; на 4-м уровне она в каждом походе).
+func relic_chance() -> float:
+	return float(TRIPS_RELIC[skill_level("trips")])
+
+
+## Прибавка к добыче похода: мета «Снаряжение походов» и навык «Походы».
+func expedition_bonus() -> float:
+	return 1.0 + 0.5 * int(meta["expedition"]) + float(TRIPS_LOOT[skill_level("trips")])
 
 
 ## Наибольшая ценность руды (глыба даёт от 1 до этого числа).
@@ -300,7 +341,7 @@ func respec() -> void:
 
 
 func dynamite_max() -> int:
-	return int(DYNAMITE_CAPS[skill_level("dynamite")])
+	return int(DYNAMITE_CAPS[skill_level("dynamite")]) + int(float(Machines.data("burner")["step"]) * machine_level("burner") + 0.01)
 
 
 ## Кладёт динамит на склад (на Титане выдаётся на 50% больше, сверх вместимости не берётся). Возвращает, сколько добавлено.
@@ -322,7 +363,7 @@ func use_dynamite() -> bool:
 
 
 func dynamite_seconds() -> float:
-	return DYNAMITE_SECONDS[skill_level("dynamite")]
+	return DYNAMITE_SECONDS[skill_level("dynamite")] + float(Machines.data("reactor")["step"]) * machine_level("reactor")
 
 
 ## Находок, которые динамит выбивает из породы: 3 плюс по одной за каждые две зоны.
@@ -339,7 +380,7 @@ func dynamite_spark() -> bool:
 
 
 func diamond_chance_factor() -> float:
-	return (1.3 if skill_level("luck") >= 1 else 1.0) * (1.0 + 0.25 * int(meta["diamonds"])) * (1.25 if Biomes.planet_mod(planet) == "diamonds" else 1.0)
+	return (1.3 if skill_level("luck") >= 1 else 1.0) * (1.0 + 0.25 * int(meta["diamonds"])) * (1.25 if Biomes.planet_mod(planet) == "diamonds" else 1.0) * (1.0 + float(Machines.data("compressor")["step"]) * machine_level("compressor"))
 
 
 func mini_seconds() -> float:
@@ -347,16 +388,16 @@ func mini_seconds() -> float:
 
 
 func golden_interval_factor() -> float:
-	return (0.7 if skill_level("luck") >= 3 else 1.0) * (0.7 if Biomes.planet_mod(planet) == "golden" else 1.0)
+	return (0.7 if skill_level("luck") >= 3 else 1.0) * (0.7 if Biomes.planet_mod(planet) == "golden" else 1.0) * (1.0 - float(Machines.data("excavator")["step"]) * machine_level("excavator"))
 
 
 ## Хранители зон на планете «Венера» слабее на 30% и платят вдвое; мета «Охотник на хранителей» добавляет +50% за уровень.
 func boss_hp_factor() -> float:
-	return 0.7 if Biomes.planet_mod(planet) == "boss" else 1.0
+	return (0.7 if Biomes.planet_mod(planet) == "boss" else 1.0) * float(GUARD_HP[skill_level("guard")]) * (1.0 - float(Machines.data("acid")["step"]) * machine_level("acid"))
 
 
 func boss_reward_factor() -> float:
-	return (2.0 if Biomes.planet_mod(planet) == "boss" else 1.0) * (1.0 + 0.5 * int(meta["guardian"]))
+	return (2.0 if Biomes.planet_mod(planet) == "boss" else 1.0) * (1.0 + 0.5 * int(meta["guardian"])) * float(GUARD_REWARD[skill_level("guard")]) * (1.0 + float(Machines.data("solar")["step"]) * machine_level("solar"))
 
 
 func lucky_rock_chance() -> float:
@@ -380,8 +421,35 @@ func machine_unlocked(id: String) -> bool:
 	return machines_unlocked.has(id)
 
 
+## Сколько ходов ленты нужно полю: 4, пятый добавляют машины Марса и Луны, шестой машины Титана и Венеры.
+func field_lanes() -> int:
+	var lanes := 4
+	var inner := false
+	var outer := false
+	for entry in Machines.LIST:
+		var from := Machines.planet_of(entry)
+		if from > 0 and machine_unlocked(str(entry["id"])):
+			if from <= 2:
+				inner = true
+			else:
+				outer = true
+	if inner or outer:
+		lanes = 5
+	if outer:
+		lanes = 6
+	return lanes
+
+
 ## Выполнено ли условие открытия машины: достаточно уровня «Камнепада» или зоны шахты.
 func _machine_condition_met(entry: Dictionary) -> bool:
+	var planet_need := Machines.planet_of(entry)
+	if planet_need > 0:
+		# машина планеты: нужна эта планета (или дальше) и зона на ней; открытая остаётся навсегда
+		if planet < planet_need:
+			return false
+		if planet > planet_need:
+			return true
+		return Biomes.index_for(total_earned, planet_scale()) >= int(entry["unlock_zone"])
 	var rain_need := int(entry["unlock_rain"])
 	var zone_need := int(entry["unlock_zone"])
 	if rain_need > 0 and int(levels["rain"]) >= rain_need:
@@ -465,6 +533,8 @@ func achievement_value(achievement: Dictionary) -> float:
 			return float(total_meta)
 		"set":
 			return float(full_set_level())
+		"relics":
+			return float(relic_kinds())
 	return 0.0
 
 
@@ -590,7 +660,7 @@ func claim_expedition() -> Dictionary:
 	if not expedition_ready():
 		return {}
 	var data: Dictionary = Retention.EXPEDITIONS[expedition_type]
-	var bonus := 1.0 + 0.5 * int(meta["expedition"])
+	var bonus := expedition_bonus()
 	var coins_reward := maxf(100.0, income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
 	add_coins(coins_reward)
 	var diamonds_reward := int(round(float(data["diamonds"]) * bonus))
@@ -615,7 +685,20 @@ func claim_expedition() -> Dictionary:
 		found[ore] = int(found[ore]) + 1
 	expedition_type = -1
 	expedition_end = 0.0
-	return {"coins": coins_reward, "diamonds": diamonds_reward, "dynamite": dynamite_reward, "found": found}
+	var relic := ""
+	if rng.randf() < relic_chance():
+		relic = str(RELICS[rng.randi() % RELICS.size()])
+		relics[relic] = int(relics[relic]) + 1
+	return {"coins": coins_reward, "diamonds": diamonds_reward, "dynamite": dynamite_reward, "found": found, "relic": relic}
+
+
+## Сколько разных диковинок найдено (для достижения «Коллекционер»).
+func relic_kinds() -> int:
+	var kinds := 0
+	for id in RELICS:
+		if int(relics[id]) > 0:
+			kinds += 1
+	return kinds
 
 
 ## Есть что забрать или потратить: журнал в шапке подсвечивается.
@@ -675,7 +758,7 @@ func autobuy_step() -> String:
 
 
 func offline_cap_seconds() -> float:
-	return OFFLINE_CAP_SECONDS + 4.0 * 3600.0 * int(meta["offline"]) + Machines.WINCH_OFFLINE_STEP * machine_level("winch")
+	return OFFLINE_CAP_SECONDS + 4.0 * 3600.0 * int(meta["offline"]) + Machines.WINCH_OFFLINE_STEP * machine_level("winch") + 3600.0 * float(SHIFT_CAP_HOURS[skill_level("shift")])
 
 
 ## Ядро достигнуто на этой планете: можно лететь на следующую.
@@ -762,7 +845,17 @@ func full_set_level() -> int:
 
 
 func collection_multiplier() -> float:
-	return (1.0 + COLLECTION_STEP * collection_levels_sum()) * (1.0 + FULL_SET_STEP * full_set_level())
+	return (1.0 + COLLECTION_STEP * collection_levels_sum()) * (1.0 + FULL_SET_STEP * full_set_level()) * relic_multiplier()
+
+
+## Бонус диковинок: +2% к доходу за каждую найденную разновидность и ещё +4% за полный набор (всего до ×1.12).
+const RELIC_STEP := 0.02
+const RELIC_SET_BONUS := 0.04
+
+
+func relic_multiplier() -> float:
+	var kinds := relic_kinds()
+	return 1.0 + RELIC_STEP * kinds + (RELIC_SET_BONUS if kinds == RELICS.size() else 0.0)
 
 
 ## Подобрана находка: в журнал; золото продлевает/запускает буст, алмаз — в кошелёк.
@@ -895,7 +988,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1013,6 +1106,9 @@ func _apply_save(data: Dictionary) -> float:
 	tutorial_done = bool(data.get("tutorial_done", true))     # у старых сохранений обучения нет
 	skill_points = _count(data.get("skill_points"), START_SKILL_POINTS)
 	golden_caught = _count(data.get("golden_caught"), 0)
+	var saved_relics := _as_dict(data.get("relics"))
+	for id in RELICS:
+		relics[id] = _count(saved_relics.get(id), 0)
 	dynamite_used = _count(data.get("dynamite_used"), 0)
 	dynamite_stock = _count(data.get("dynamite_stock"), 5)      # старые сохранения: небольшой запас
 	bosses_defeated = _count(data.get("bosses_defeated"), 0)
@@ -1028,7 +1124,7 @@ func _apply_save(data: Dictionary) -> float:
 	var saved_skills := _as_dict(data.get("skills"))
 	for branch in skills:
 		skills[branch] = clampi(int(_num(saved_skills.get(branch), 0.0)), 0, Skills.MAX_LEVEL)
-	dynamite_stock = mini(dynamite_stock, dynamite_max())
+	dynamite_stock = mini(dynamite_stock, maxi(dynamite_max(), 99))      # запас может быть выше вместимости (после «Новой шахты» уровень Горелки сбрасывается): не отнимаем, только не добавляем
 	var saved_finds := _as_dict(data.get("finds"))
 	for ore in ORES:
 		finds[ore] = _count(saved_finds.get(str(ore)), 0)
@@ -1065,10 +1161,10 @@ func _apply_save(data: Dictionary) -> float:
 	offline_lab_diamonds = 0
 	var lab_period := lab_interval()
 	if lab_period > 0.0:
-		offline_lab_diamonds = mini(floori((away + lab_progress) / lab_period), Machines.LAB_OFFLINE_CAP)
+		offline_lab_diamonds = mini(floori((away + lab_progress) / lab_period), Machines.LAB_OFFLINE_CAP + int(SHIFT_LAB_CAP[skill_level("shift")]))
 		diamonds += offline_lab_diamonds
 	offline_capped = gone > offline_cap_seconds()
-	var earned := income_per_second() * away
+	var earned := income_per_second() * away * float(SHIFT_INCOME[skill_level("shift")]) * (1.0 + 0.01 * machine_level("solar"))
 	add_coins(earned)
 	return earned
 
@@ -1082,31 +1178,91 @@ static func delete_save() -> void:
 
 # ---------- Перенос прогресса кодом ----------
 
-const CODE_PREFIX := "LM1:"
+const CODE_PREFIX := "LM2:"
+const CODE_TTL := 3600.0                  # код действует час: старый код, пересланный другим, больше не работает
+const USED_CODES_PATH := "user://luckymine_used_codes.json"
 const MAX_SAVE_BYTES := 2000000          # файл или код больше этого не читаем (защита от мусора в буфере обмена)
 
 
-## Код со всем прогрессом: копируется в буфер обмена и вставляется на другом устройстве.
+## Код со всем прогрессом: копируется в буфер обмена и вставляется на другом устройстве. Действует час, один раз на
+## устройство (код уже введённый здесь повторно не принимается), покупки не переносятся (их возвращает магазин).
 func export_code() -> String:
-	return CODE_PREFIX + Marshalls.utf8_to_base64(serialize())
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var wrapper := JSON.stringify({"save": serialize(), "exp": now() + CODE_TTL, "id": "%08x%08x" % [rng.randi(), rng.randi()]})
+	return CODE_PREFIX + Marshalls.utf8_to_base64(JSON.stringify({"w": wrapper, "sig": _sign(wrapper)}))
 
 
-## Проверяет код и кладёт его на место сохранения (текущее уходит в запасную копию). true — код принят.
-## Код с неверной подписью (правленный) не принимается. После успеха сцену нужно перезагрузить.
-static func import_code(code: String) -> bool:
-	if code.length() > MAX_SAVE_BYTES * 2:
-		return false
-	code = code.strip_edges().replace("\n", "").replace("\r", "").replace(" ", "")
-	if not code.begins_with(CODE_PREFIX):
-		return false
-	var text := Marshalls.base64_to_utf8(code.substr(CODE_PREFIX.length()))
-	if text.is_empty():
+static func _used_code_ids() -> Array:
+	if not FileAccess.file_exists(USED_CODES_PATH):
+		return []
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(USED_CODES_PATH))
+	return parsed if typeof(parsed) == TYPE_ARRAY else []
+
+
+static func _remember_code_id(id: String) -> void:
+	var ids := _used_code_ids()
+	ids.append(id)
+	if ids.size() > 50:
+		ids = ids.slice(ids.size() - 50)
+	var file := FileAccess.open(USED_CODES_PATH, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(ids))
+		file.close()
+
+
+## Кладёт сохранение из облака на место локального (текущее уходит в запасную копию). Подпись проверяется; true — принято.
+## После успеха сцену нужно перезагрузить.
+static func import_save_text(text: String) -> bool:
+	if text.length() > MAX_SAVE_BYTES:
 		return false
 	var parsed = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY or typeof(parsed.get("payload")) != TYPE_STRING:
 		return false
 	if str(parsed.get("sig", "")) != _sign(parsed["payload"]) or typeof(JSON.parse_string(parsed["payload"])) != TYPE_DICTIONARY:
 		return false
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(SAVE_PATH), ProjectSettings.globalize_path(BACKUP_PATH))
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(text)
+	file.close()
+	return true
+
+
+## Проверяет код и кладёт его на место сохранения (текущее уходит в запасную копию). true — код принят.
+## Не принимается: код с неверной подписью, просроченный, уже введённый на этом устройстве. После успеха сцену нужно перезагрузить.
+static func import_code(code: String) -> bool:
+	if code.length() > MAX_SAVE_BYTES * 2:
+		return false
+	code = code.strip_edges().replace("
+", "").replace("
+", "").replace(" ", "")
+	if not code.begins_with(CODE_PREFIX):
+		return false
+	var outer = JSON.parse_string(Marshalls.base64_to_utf8(code.substr(CODE_PREFIX.length())))
+	if typeof(outer) != TYPE_DICTIONARY or typeof(outer.get("w")) != TYPE_STRING or str(outer.get("sig", "")) != _sign(outer["w"]):
+		return false
+	var wrapper = JSON.parse_string(outer["w"])
+	if typeof(wrapper) != TYPE_DICTIONARY or typeof(wrapper.get("save")) != TYPE_STRING:
+		return false
+	if now() > _num(wrapper.get("exp"), 0.0):
+		return false                      # просрочен
+	var id := str(wrapper.get("id", ""))
+	if id == "" or _used_code_ids().has(id):
+		return false                      # уже вводили
+	var parsed = JSON.parse_string(wrapper["save"])
+	if typeof(parsed) != TYPE_DICTIONARY or typeof(parsed.get("payload")) != TYPE_STRING:
+		return false
+	if str(parsed.get("sig", "")) != _sign(parsed["payload"]) or typeof(JSON.parse_string(parsed["payload"])) != TYPE_DICTIONARY:
+		return false
+	# покупки не переезжают с кодом: «убрать рекламу» восстанавливается через магазин (подпись ставим заново)
+	var data: Dictionary = JSON.parse_string(parsed["payload"])
+	data["ads_removed"] = false
+	var payload := JSON.stringify(data)
+	var text := JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
+	_remember_code_id(id)
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.copy_absolute(ProjectSettings.globalize_path(SAVE_PATH), ProjectSettings.globalize_path(BACKUP_PATH))
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)

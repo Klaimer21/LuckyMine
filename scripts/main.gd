@@ -1,15 +1,15 @@
 extends Node
-## LuckyMine: рудный стол, шапка с монетами, строки улучшений, шестерёнка настроек.
-## Глыбы падают сами, по кнопке «Обвал» и по касанию стола; каждая, разбиваясь, приносит монеты.
+## LuckyMine: рудное поле, шапка с монетами, строки улучшений, шестерёнка настроек.
+## Глыбы выкатываются сами, по кнопке «Обвал» и по касанию поля; каждая, разбиваясь, приносит монеты.
 
 const SAVE_EVERY := 5.0
-const TOAST_TOP := 560                  # тост у верхнего края стола (выше стоит полоса машин); при появлении въезжает снизу на 28 px
+const TOAST_TOP := 560                  # тост у верхнего края поля; при появлении въезжает снизу на 28 px
 const PANEL_HEIGHT := 350               # нижняя панель: «Обвал», «Авто», «Динамит» и кнопка «Улучшения»
 
 var state := ClickerState.new()
 var settings := Settings.new()
 
-var _table: MineTable
+var _table: FieldTable
 var _ui: Control
 var _fx: FxLayer
 var _dust: CPUParticles2D
@@ -52,6 +52,8 @@ var _shown_coins := 0.0
 var _shown_text := ""
 var _bump := 0.0
 var _save_dialogs := SaveDialogs.new()
+var _cloud: CloudSave
+var _lanes_seen := 4
 var _info := InfoDialogs.new()
 var _perf := PerfMonitor.new()
 var _rewards := Rewards.new()
@@ -81,11 +83,12 @@ func _ready() -> void:
 	add_child(sfx)
 	music = Music.new()
 	add_child(music)
-	_table = MineTable.new()
+	_table = FieldTable.new()
 	add_child(_table)
 	_table.setup(state)
 	_table.auto_throw = state.auto_throw
 	_biome = Biomes.index_for(state.total_earned, state.planet_scale())
+	ZonePalette.apply(_biome)                  # цвета интерфейса зоны до построения интерфейса
 	_table.set_biome(_biome)
 	_table.set_planet(state.planet)
 	music.play_zone(_biome, true)
@@ -120,11 +123,17 @@ func _ready() -> void:
 			if real:
 				state.rocks_broken += 1
 				sfx.crack())
-	_table.detonated.connect(func(screen_pos: Vector2) -> void: _fx.blast(screen_pos))
+	_table.detonated.connect(func(screen_pos: Vector2) -> void:
+			_fx.blast(screen_pos)
+			_fx.play("explosion", screen_pos, 14.0)
+			_fx.play("smoke", screen_pos + Vector2(0.0, -40.0), 14.0, 0.35))
+	_table.golden_caught_at.connect(func(screen_pos: Vector2) -> void: _fx.play("coins", screen_pos, 8.0))
 	_table.gem_spawned.connect(func(screen_pos: Vector2, ore: int) -> void:
 			_fx.glint(screen_pos)
 			if ore == 4:
-				_hit_stop(0.07))
+				_hit_stop(0.07)
+				if state.take_hint("react_first_diamond"):
+					_peek.react("surprised", 3.0))
 	_table.collected.connect(func(screen_pos: Vector2, color: Color) -> void: _fx.emit_sparks(screen_pos, color))
 
 	var layer := CanvasLayer.new()
@@ -139,6 +148,18 @@ func _ready() -> void:
 	RenderingServer.set_default_clear_color(UiTheme.BG)       # поля при «keep» того же цвета, что и фон интерфейса
 	_apply_aspect()
 	_save_dialogs.setup(_ui, state, _show_toast)
+	_cloud = CloudSave.new()
+	add_child(_cloud)
+	_cloud.setup(state, settings)
+	_cloud.remote_found.connect(func(remote: Dictionary, text: String) -> void:
+			_save_dialogs.offer_cloud(remote, text, func() -> void:
+					settings.cloud_declined = float(remote["last_seen"])
+					settings.save()))
+	_cloud.status_changed.connect(func() -> void:
+			if _settings_screen != null and _settings_screen.visible:
+				_settings_screen.rebuild())
+	_cloud.start()
+	_lanes_seen = state.field_lanes()
 	_machines.setup(_ui, state, settings, sfx, _table, _refresh, _show_toast)
 	_sheet.setup(_ui, state, settings, sfx, PANEL_HEIGHT, _refresh, func(px: float) -> void: _hint_card.set_lift(px),
 			func(key: String) -> void: _tutorial.notify("buy_" + key))
@@ -148,15 +169,18 @@ func _ready() -> void:
 				_shown_coins = state.coins
 				_prestige_key = -1
 				_sheet.reset_affordability()
+				_cloud.upload()
 				_say_hint("after_prestige"),
 			func() -> void:
 				_earned_batch = 0.0
 				_shown_coins = 0.0
 				_biome = 0
+				ZonePalette.shift(0, self)
 				_planet_arrival_line()
 				_dust.color = Color((Biomes.ACCENTS[0] as Color) * Biomes.planet_tint(state.planet), 0.32)
 				_prestige_key = -1
 				_sheet.reset_affordability()
+				_cloud.upload()
 				_journal.visible = false)
 	_rewards.setup(_ui, state, settings, sfx, _table, get_viewport(), _show_toast, _refresh,
 			func() -> void:
@@ -197,6 +221,7 @@ func _process(delta: float) -> void:
 		_earned_batch = 0.0
 	_update_counter(delta)
 	_perf.update(delta)
+	_machines.cover = _sheet.sheet.get_global_rect() if _sheet.sheet != null and _sheet.sheet.visible else Rect2()
 	_machines.update(delta)
 	for opened in state.update_machine_unlocks():
 		_on_machine_unlocked(str(opened))
@@ -287,12 +312,14 @@ func _build_tutorial() -> void:
 	_tutorial = Tutorial.new()
 	_ui.add_child(_tutorial)
 	_tutorial.steps = [
-		{"text": "Касайтесь стола: на месте касания упадут глыбы, а каждая принесёт монеты.",
+		{"text": "Касайтесь поля: под пальцем упадут глыбы, и каждая принесёт монеты.",
 				"rect": _tut_rect_table, "wait": "tap"},
 		{"text": "Жмите «Обвал»: сразу несколько глыб. «Сила обвала» увеличивает их число.",
 				"rect": _tut_rect_throw, "wait": "throw"},
-		{"text": "Накопите монет, откройте «Улучшения» и купите «Камнепад»: глыбы начнут падать сами.",
+		{"text": "Накопите монет, откройте «Улучшения» и купите «Камнепад»: глыбы начнут выкатываться из ворот сами.",
 				"rect": _tut_rect_rain, "wait": "buy_rain", "done": _tut_rain_bought},
+		{"text": "Руда едет по ленте через машины-здания. Нажмите на здание, чтобы купить или улучшить машину; новые открываются с зонами.",
+				"rect": _tut_rect_table, "wait": "next"},
 		{"text": "«Авто» включено: шахта работает, даже пока вы не смотрите. Доход копится и офлайн до 8 часов.",
 				"rect": _tut_rect_auto, "wait": "next"},
 		{"text": "Глубина растёт от заработанного. Новая зона меняет вид и руду, а потом откроется «Новая шахта».",
@@ -359,6 +386,9 @@ func _show_toast(text: String) -> void:
 
 
 func _on_biome_changed(index: int) -> void:
+	if _peek != null:
+		_peek.react("cheer")
+	ZonePalette.shift(index, self)
 	var data: Dictionary = Biomes.LIST[index]
 	_show_toast(Tr.t("Новая зона: %s") % Tr.t(Biomes.zone_name(index, state.planet)))
 	sfx.play("zone", -3.0)
@@ -388,7 +418,7 @@ func _on_biome_changed(index: int) -> void:
 func _planet_arrival_line() -> void:
 	if not state.tutorial_done or not state.take_hint("planet_%d" % state.planet):
 		return
-	_hint_card.show_hint(Tr.t("Мы на планете: %s! Особенность: %s.") % [Tr.t(Biomes.planet_name(state.planet)), Tr.t(Biomes.planet_mod_text(state.planet))])
+	_hint_card.show_hint(Tr.t("Мы на планете: %s! Особенность: %s.") % [Tr.t(Biomes.planet_name(state.planet)), Tr.t(Biomes.planet_mod_text(state.planet))], "cheer")
 
 
 ## «Золотая лихорадка» и «Динамит»: таймеры, подписи, состояние клавиши.
@@ -457,6 +487,10 @@ func _apply_season() -> void:
 ## Открылась машина: сообщение, подсказка, ячейка оживает.
 func _on_machine_unlocked(id: String) -> void:
 	_show_toast(Tr.t("Открыта машина: %s") % Tr.t(str(Machines.data(id)["name"])))
+	var lanes := state.field_lanes()
+	if lanes > _lanes_seen:                      # лента выросла: один раз объясняем, откуда новое место
+		_lanes_seen = lanes
+		_say_hint("field_lane%d" % lanes)
 	sfx.play("claim", -4.0)
 	_machines.refresh()
 	# первая машина: короткий тур с подсветкой вместо обычной подсказки (подсказка тоже считается показанной)
@@ -472,9 +506,9 @@ func _start_machine_tour() -> void:
 	if _machine_tour == null or not is_instance_valid(_machine_tour):
 		return
 	_machine_tour.steps = [
-		{"text": "Над столом появилась Дробилка: она сама сбрасывает глыбы. Нажмите на неё, чтобы улучшить.",
+		{"text": "На ленте появилась Дробилка: она сама подбрасывает глыбы. Нажмите на здание, чтобы улучшить.",
 				"rect": func() -> Rect2: return _machines.cell_rect("crusher"), "wait": "next"},
-		{"text": "Остальные ячейки закрыты: каждая новая зона откроет машину. Конвейер, Подрывник, Лаборатория и Лебёдка помогут по-разному.",
+		{"text": "Остальные здания закрыты: каждая новая зона откроет машину. Конвейер, Подрывник, Лаборатория и Лебёдка помогут по-разному.",
 				"rect": func() -> Rect2: return _machines.row_rect(), "wait": "next"},
 	]
 	_machine_tour.start()
@@ -488,6 +522,8 @@ func _hit_stop(seconds: float) -> void:
 
 
 func _on_boss_defeated(zone: int) -> void:
+	if _peek != null:
+		_peek.react("cheer", 3.0)
 	_hit_stop(0.09)
 	var gems := int(round((2 + zone) * state.boss_reward_factor()))
 	state.diamonds += gems
@@ -568,6 +604,7 @@ func _build_ui() -> void:
 	_build_atmosphere()
 	_build_top()
 	_machines.build()
+	_table.fx_requested.connect(func(kind: String, pos: Vector2, pixel: float) -> void: _fx.play(kind, pos, pixel))
 
 	_perf.build()
 	_toast = UiTheme.make_label("", 52, UiTheme.TEXT, true)
@@ -577,7 +614,7 @@ func _build_ui() -> void:
 	_toast.modulate.a = 0.0
 	_ui.add_child(_toast)
 
-	_hint = UiTheme.make_label("Касайтесь стола или жмите «Обвал»", 30, Color(UiTheme.MUTE, 0.8))
+	_hint = UiTheme.make_label("Касайтесь поля или жмите «Обвал»", 30, Color(UiTheme.MUTE, 0.8))
 	_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	_hint.offset_top = -PANEL_HEIGHT - 70
 	_hint.offset_bottom = -PANEL_HEIGHT - 20
@@ -615,6 +652,9 @@ func _build_ui() -> void:
 	_ui.add_child(_settings_screen)
 	_settings_screen.setup(settings, _table, state)
 	_settings_screen.language_changed.connect(_on_language_changed)
+	_settings_screen.cloud = _cloud
+	_settings_screen.cloud_sign_in_requested.connect(func() -> void: _cloud.sign_in())
+	_settings_screen.cloud_sync_requested.connect(func() -> void: _cloud.sync_now())
 	_settings_screen.reset_requested.connect(_save_dialogs.reset_progress)
 	_settings_screen.export_requested.connect(_save_dialogs.export_code)
 	_settings_screen.import_requested.connect(_save_dialogs.import_code)
@@ -694,26 +734,26 @@ func _build_top() -> void:
 	_coins_label = UiTheme.make_label("0", 96, UiTheme.TEXT, true)
 	_coins_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_coins_label)
-	_journal_button = UiTheme.make_button("0", false, 28)
-	_journal_button.custom_minimum_size = Vector2(170, 96)
+	_journal_button = UiTheme.make_button("0", false, 38)
+	_journal_button.custom_minimum_size = Vector2(250, 120)
 	_journal_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_journal_button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var journal_icon := Icon.new().setup("journal", UiTheme.MUTE, 34)
-	journal_icon.position = Vector2(16, 31)
+	var journal_icon := Icon.new().setup("journal", UiTheme.MUTE, 52)
+	journal_icon.position = Vector2(20, 34)
 	_journal_button.add_child(journal_icon)
 	# число на кнопке — алмазы: рядом с ним алмаз, чтобы было понятно, что это
-	var journal_gem := Icon.new().setup("gem", Color(0.55, 0.86, 0.90), 30)
+	var journal_gem := Icon.new().setup("gem", Color(0.55, 0.86, 0.90), 44)
 	_journal_button.add_child(journal_gem)
 	_journal_button.draw.connect(func() -> void:
 			var font := _journal_button.get_theme_font("font")
 			var text_width := font.get_string_size(_journal_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _journal_button.get_theme_font_size("font_size")).x
 			var right_margin := _journal_button.get_theme_stylebox("normal").get_content_margin(SIDE_RIGHT)
-			journal_gem.position = Vector2(_journal_button.size.x - right_margin - text_width - 38.0, (_journal_button.size.y - 30.0) * 0.5))
+			journal_gem.position = Vector2(_journal_button.size.x - right_margin - text_width - 54.0, (_journal_button.size.y - 44.0) * 0.5))
 	_journal_button.pressed.connect(func() -> void:
 			_journal.open()
 			_say_hint("journal_first"))
 	top.add_child(_journal_button)
-	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 40, Vector2(96, 96))
+	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 60, Vector2(120, 120))
 	gear.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	gear.pressed.connect(func() -> void: _settings_screen.open())
 	top.add_child(gear)
@@ -940,6 +980,7 @@ func _register_tap(pos: Vector2) -> void:
 	_table.tap(pos)
 	_tutorial.notify("tap")
 	_fx.ripple(pos)
+	_fx.play("flash", pos, 3.0)
 	settings.vibrate(8)
 	_hide_hint()
 

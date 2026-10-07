@@ -6,7 +6,7 @@ extends RefCounted
 var host: Control
 var state: ClickerState
 
-var _table: MineTable
+var _table: FieldTable
 var _sfx: Sfx
 var _music: Music
 var _settings: Settings
@@ -15,7 +15,7 @@ var _on_prestige_done: Callable    # забег сброшен («Новая ш�
 var _on_planet_arrived: Callable   # прилетели на новую планету: main сбрасывает зону, цвет пыли, закрывает журнал
 
 
-func setup(host_node: Control, game_state: ClickerState, mine_table: MineTable, sound: Sfx, music_player: Music,
+func setup(host_node: Control, game_state: ClickerState, mine_table: FieldTable, sound: Sfx, music_player: Music,
 		game_settings: Settings, show_toast: Callable, on_prestige_done: Callable, on_planet_arrived: Callable) -> ProgressionDialogs:
 	host = host_node
 	state = game_state
@@ -34,6 +34,10 @@ func show_prestige() -> void:
 	if pending < 1:
 		return
 	var modal := Modal.new()
+	var cheer := Companion.portrait(240.0, "cheer")
+	if cheer != null:
+		cheer.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		modal.body.add_child(cheer)
 	modal.body.add_child(UiTheme.make_label("Новая шахта", 54, UiTheme.TEXT, true))
 	var after := 1.0 + state.vein_step() * (state.veins + pending)
 	var gain_text := UiTheme.make_label(Tr.fmt("Вы получите %d жил: доход ×%.1f → ×%.1f", [pending, state.vein_multiplier(), after]), 32, UiTheme.BRASS)
@@ -75,6 +79,10 @@ func show_planet() -> void:
 		return
 	var modal := Modal.new()
 	modal.body.add_child(UiTheme.make_label("Новая планета", 54, UiTheme.TEXT, true))
+	var world := Biomes.planet_picture(state.planet + 1, 192.0)
+	if world != null:
+		world.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		modal.body.add_child(world)
 	var next_name := Tr.t(Biomes.planet_name(state.planet + 1))
 	var gain_text := UiTheme.make_label(Tr.t("Вы полетите на планету: %s. Звёздной пыли: +%d") % [next_name, state.planet_gain()], 32, UiTheme.BRASS)
 	gain_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

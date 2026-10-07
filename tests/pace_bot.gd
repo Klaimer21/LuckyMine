@@ -31,7 +31,7 @@ func _initialize() -> void:
 		_passive = true                  # игрок почти не касается экрана: растёт только «Камнепад»
 	_main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(_main)
-	Engine.time_scale = 10.0
+	Engine.time_scale = float(OS.get_environment("PACE_SCALE")) if OS.get_environment("PACE_SCALE") != "" else 10.0
 	Engine.max_fps = 0
 	_main.state.tutorial_done = true
 	_main.state.daily_day = ClickerState.today()

@@ -13,14 +13,17 @@ signal tutorial_requested
 signal stats_requested
 signal help_requested
 signal hints_reset_requested
+signal cloud_sign_in_requested
+signal cloud_sync_requested
 
 var settings: Settings
-var table: MineTable
+var table: FieldTable
+var cloud: CloudSave                     # облачное сохранение (null или недоступно: показывается перенос кодом)
 var state: ClickerState
 var _content: VBoxContainer
 
 
-func setup(p_settings: Settings, p_table: MineTable, p_state: ClickerState = null) -> void:
+func setup(p_settings: Settings, p_table: FieldTable, p_state: ClickerState = null) -> void:
 	settings = p_settings
 	table = p_table
 	state = p_state
@@ -78,18 +81,9 @@ func rebuild() -> void:
 	_add_choice("Качество графики", Settings.QUALITY_NAMES, settings.quality, true, func(i: int) -> void:
 			settings.quality = i
 			_changed())
-	_add_choice("Сглаживание", Settings.AA_NAMES, settings.antialiasing, true, func(i: int) -> void:
-			settings.antialiasing = i
-			_changed())
-	var scale_options: Array = []
-	var scale_index := 0
-	for i in Settings.RENDER_SCALES.size():
-		scale_options.append("%d%%" % int(Settings.RENDER_SCALES[i] * 100.0))
-		if is_equal_approx(Settings.RENDER_SCALES[i], settings.render_scale):
-			scale_index = i
-	_add_choice("Разрешение рендера", scale_options, scale_index, false, func(i: int) -> void:
-			settings.render_scale = Settings.RENDER_SCALES[i]
-			_changed())
+	var quality_hint := UiTheme.make_label("Качество меняет, сколько глыб, крошки и руды рисуется сразу: на слабом телефоне ставьте низкое.", 24, UiTheme.MUTE)
+	quality_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(quality_hint)
 	var fps_options: Array = []
 	var fps_index := 1
 	for i in Settings.FPS_OPTIONS.size():
@@ -173,8 +167,48 @@ func rebuild() -> void:
 	var motion_note := UiTheme.make_text("Без тряски камеры, вспышек и паузы кадра.", 28, UiTheme.MUTE)
 	_content.add_child(motion_note)
 
+	if CloudSave.available():
+		_build_cloud_section()
+	else:
+		_build_code_section()
+
+	_content.add_child(UiTheme.hairline())
+	var reset := UiTheme.make_button("Сбросить прогресс", false, 30)
+	reset.pressed.connect(func() -> void: reset_requested.emit())
+	_content.add_child(reset)
+	_content.add_child(UiTheme.make_label(Tr.t("LuckyMine · версия %s") % str(ProjectSettings.get_setting("application/config/version", "0")), 24, UiTheme.MUTE))
+
+
+## Облако (Android): вход в Google Play Игры, синхронизация, выключатель.
+func _build_cloud_section() -> void:
+	_add_section("Облачное сохранение")
+	var note := UiTheme.make_label("Прогресс хранится в вашем аккаунте Google Play Игры: он не потеряется при смене телефона, а переслать его другому нельзя.", 24, UiTheme.MUTE)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(note)
+	_add_toggle("Облачное сохранение", settings.cloud_enabled, func(on: bool) -> void:
+			settings.cloud_enabled = on
+			_changed())
+	var status := "Не выполнен вход"
+	if cloud != null and cloud.signed_in:
+		status = "Вход выполнен"
+	_content.add_child(UiTheme.make_label(Tr.t("Google Play Игры") + ": " + Tr.t(status), 28, UiTheme.BRASS if cloud != null and cloud.signed_in else UiTheme.MUTE))
+	if settings.cloud_last_sync > 0.0:
+		var when := Time.get_datetime_dict_from_unix_time(int(settings.cloud_last_sync + Time.get_time_zone_from_system()["bias"] * 60.0))
+		_content.add_child(UiTheme.make_label(Tr.t("Последняя запись") + ": %02d.%02d %02d:%02d" % [when["day"], when["month"], when["hour"], when["minute"]], 24, UiTheme.MUTE))
+	if cloud != null and not cloud.signed_in:
+		var sign := UiTheme.make_button("Войти в Google Play Игры", true, 30)
+		sign.pressed.connect(func() -> void: cloud_sign_in_requested.emit())
+		_content.add_child(sign)
+	elif cloud != null:
+		var sync := UiTheme.make_button("Синхронизировать сейчас", false, 30)
+		sync.pressed.connect(func() -> void: cloud_sync_requested.emit())
+		_content.add_child(sync)
+
+
+## Перенос кодом (ПК и устройства без облака).
+func _build_code_section() -> void:
 	_add_section("Перенос прогресса")
-	var transfer_note := UiTheme.make_label("Код хранит весь прогресс: перенесите игру на другое устройство или сохраните копию. Не показывайте его другим.", 24, UiTheme.MUTE)
+	var transfer_note := UiTheme.make_label("Код хранит весь прогресс: перенесите игру на другое устройство. Он действует час и вводится один раз, покупки не переносятся. Не показывайте его другим.", 24, UiTheme.MUTE)
 	transfer_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_content.add_child(transfer_note)
 	var export_button := UiTheme.make_button("Скопировать код сохранения", false, 30)
@@ -183,12 +217,6 @@ func rebuild() -> void:
 	var import_button := UiTheme.make_button("Вставить код сохранения", false, 30)
 	import_button.pressed.connect(func() -> void: import_requested.emit())
 	_content.add_child(import_button)
-
-	_content.add_child(UiTheme.hairline())
-	var reset := UiTheme.make_button("Сбросить прогресс", false, 30)
-	reset.pressed.connect(func() -> void: reset_requested.emit())
-	_content.add_child(reset)
-	_content.add_child(UiTheme.make_label(Tr.t("LuckyMine · версия %s") % str(ProjectSettings.get_setting("application/config/version", "0")), 24, UiTheme.MUTE))
 
 
 ## Заголовок раздела настроек: линия и название латунью.
@@ -239,7 +267,7 @@ func _add_choice(title: String, options: Array, current: int, translate: bool, o
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_child(row)
 	for i in options.size():
-		var button := UiTheme.make_button(Tr.t(str(options[i])) if translate else str(options[i]), i == current, 28)
+		var button := UiTheme.make_button(Tr.t(str(options[i])) if translate else str(options[i]), i == current, 24)
 		button.clip_text = options.size() <= 5
 		if options.size() <= 5:
 			button.size_flags_horizontal = Control.SIZE_EXPAND_FILL

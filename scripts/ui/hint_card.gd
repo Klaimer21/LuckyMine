@@ -10,6 +10,7 @@ var panel_height := 640.0
 var _lift := 0.0                      # на сколько поднять облачко (например, над открытым меню улучшений)
 
 var _queue: Array[String] = []
+var _poses: Array[String] = []        # поза Борка для каждой реплики из очереди
 var _bubble: PanelContainer
 var _label: Label
 var _time := 0.0
@@ -21,7 +22,7 @@ func _init() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bubble = PanelContainer.new()
-	_bubble.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.SURFACE, UiTheme.BRASS_DIM, 2, 18, 18))
+	_bubble.add_theme_stylebox_override("panel", UiTheme.panel_style(Color(UiTheme.SURFACE, 0.88), UiTheme.BRASS_DIM, 2, 18, 18))
 	_bubble.mouse_filter = Control.MOUSE_FILTER_STOP
 	_bubble.modulate.a = 0.0
 	_bubble.visible = false
@@ -58,8 +59,9 @@ func set_lift(pixels: float) -> void:
 	_layout()
 
 
-func show_hint(text: String) -> void:
+func show_hint(text: String, pose := "point") -> void:
 	_queue.append(text)
+	_poses.append(pose)
 	if not _shown:
 		_next()
 
@@ -73,6 +75,8 @@ func _next() -> void:
 		return
 	_shown = true
 	_label.text = _queue.pop_front()
+	if peek != null:
+		peek.set_pose(str(_poses.pop_front()))
 	_duration = Hints.seconds_for(_label.text)
 	_layout()
 	_bubble.visible = true

@@ -1,17 +1,18 @@
 class_name UiTheme
 extends RefCounted
 ## Палитра и фабрики элементов интерфейса: фетр, слоновая кость и один акцент (латунь).
+## Цвета фона, панелей, линий, фетра и акцента (static var) меняются вместе с зоной: см. ZonePalette.
 ## Шрифты подхватываются из assets/fonts, если файлы лежат на месте.
 
-const BG := Color(0.055, 0.090, 0.078)
-const SURFACE := Color(0.082, 0.133, 0.114)
-const LINE := Color(0.149, 0.220, 0.184)
-const LINE_STRONG := Color(0.239, 0.353, 0.302)
+static var BG := Color(0.055, 0.090, 0.078)
+static var SURFACE := Color(0.082, 0.133, 0.114)
+static var LINE := Color(0.149, 0.220, 0.184)
+static var LINE_STRONG := Color(0.239, 0.353, 0.302)
 const TEXT := Color(0.937, 0.910, 0.839)
 const MUTE := Color(0.624, 0.690, 0.631)
-const BRASS := Color(0.788, 0.643, 0.361)
-const BRASS_DIM := Color(0.490, 0.416, 0.243)
-const FELT := Color(0.106, 0.251, 0.204)
+static var BRASS := Color(0.788, 0.643, 0.361)
+static var BRASS_DIM := Color(0.490, 0.416, 0.243)
+static var FELT := Color(0.106, 0.251, 0.204)
 const DPS := Color(0.659, 0.267, 0.227)
 const TANK := Color(0.290, 0.416, 0.561)
 const SUP := Color(0.420, 0.541, 0.361)
@@ -21,8 +22,11 @@ const ENEMY_INK := Color(0.753, 0.333, 0.247)
 const DARK_ON_BRASS := Color(0.10, 0.08, 0.03)
 
 ## Шрифты (один набор на все языки, кроме китайского: Russo One и Fira Sans Condensed содержат латиницу и кириллицу).
+const PIXEL_DISPLAY := "PixelifySans-Display.ttf"      # Pixelify Sans (OFL), вес 700. В кириллице добавлены О и П, а цифра 5 перерисована (в оригинале похожа на S)
+const PIXEL_BODY := "PixelifySans-Body.ttf"            # он же, вес 550
 const DISPLAY_FONT := "RussoOne-Regular.ttf"
 const BODY_FONT := "FiraSansCondensed-SemiBold.ttf"
+const PIXEL_UI := true                                  # пиксельный шрифт вместо Russo One и Fira Sans
 
 
 static var _system_font: SystemFont
@@ -44,16 +48,21 @@ static func install_system_font() -> void:
 
 
 static func display_file() -> String:
-	return DISPLAY_FONT
+	return PIXEL_DISPLAY if PIXEL_UI and _has_font(PIXEL_DISPLAY) else DISPLAY_FONT
 
 
 static func body_file() -> String:
-	return BODY_FONT
+	return PIXEL_BODY if PIXEL_UI and _has_font(PIXEL_BODY) else BODY_FONT
+
+
+static func _has_font(file_name: String) -> bool:
+	return ResourceLoader.exists("res://assets/fonts/" + file_name)
+
 
 
 ## Файл шрифта из assets/fonts. Для китайского свои файлы не используются (в них нет иероглифов).
 ## Знаки, которых нет в шрифте (например, стрелка в Russo One), берутся из системного шрифта (запасной).
-static func font(file_name: String) -> Font:
+static func font(file_name: String, display := false) -> Font:
 	if Tr.language == "zh":
 		return null
 	var path := "res://assets/fonts/" + file_name
@@ -65,9 +74,10 @@ static func font(file_name: String) -> Font:
 	return null
 
 
+
 ## Шрифт для 3D-текста: фирменный, если есть, иначе системный.
 static func text_font(display := false) -> Font:
-	var f := font(display_file() if display else body_file())
+	var f := font(display_file() if display else body_file(), display)
 	return f if f != null else system_font()
 
 
@@ -101,32 +111,36 @@ static func make_text(text: String, size: int, color := TEXT) -> Label:
 	return label
 
 
+## Весь текст интерфейса чуть крупнее заданных размеров (пиксельный шрифт читается лучше покрупнее).
+const FONT_SCALE := 1.12
+
+
 static func make_label(text: String, size: int, color := TEXT, display := false) -> Label:
-	size = maxi(size, MIN_LABEL_SIZE)
+	size = maxi(roundi(size * FONT_SCALE), MIN_LABEL_SIZE)
 	var label := Label.new()
 	label.text = Tr.t(text)
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", color)
-	var f := font(display_file() if display else body_file())
+	var f := font(display_file() if display else body_file(), display)
 	if f != null:
 		label.add_theme_font_override("font", f)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
 
 
-## Ползунок под палец: толстая дорожка и большой круглый бегунок.
+## Ползунок под палец: толстая дорожка со скошенными углами и квадратный пиксельный бегунок.
 static func style_slider(slider: HSlider) -> void:
-	var track := StyleBoxFlat.new()
+	var track := pixelize(StyleBoxFlat.new(), 6)
 	track.bg_color = SURFACE
-	track.set_corner_radius_all(10)
-	track.set_border_width_all(1)
-	track.border_color = LINE_STRONG
+	track.set_border_width_all(4)
+	track.border_color = BG
 	track.content_margin_top = 14
 	track.content_margin_bottom = 14
 	slider.add_theme_stylebox_override("slider", track)
-	var filled := StyleBoxFlat.new()
+	var filled := pixelize(StyleBoxFlat.new(), 6)
 	filled.bg_color = BRASS_DIM
-	filled.set_corner_radius_all(10)
+	filled.set_border_width_all(4)
+	filled.border_color = BG
 	filled.content_margin_top = 14
 	filled.content_margin_bottom = 14
 	slider.add_theme_stylebox_override("grabber_area", filled)
@@ -138,27 +152,40 @@ static func style_slider(slider: HSlider) -> void:
 
 
 static var _knob: ImageTexture
+static var _knob_key := Color.BLACK
 
 
+## Бегунок 48x72: тёмная рамка в 4 пикселя, скошенные углы, блик сверху слева и тень снизу справа (шаг пикселя 4).
 static func _slider_knob() -> ImageTexture:
-	if _knob != null:
+	if _knob != null and _knob_key == BRASS:
 		return _knob
-	var size := 80
-	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var center := Vector2(size, size) * 0.5
-	for y in size:
-		for x in size:
-			var d := Vector2(x + 0.5, y + 0.5).distance_to(center)
-			var edge := clampf(center.x - d, 0.0, 1.0)        # 1 внутри круга, мягкая кромка в 1 пиксель
-			var ring := d > center.x - 6.0
-			var color := BRASS_DIM if ring else BRASS
-			image.set_pixel(x, y, Color(color, edge))
+	var w := 48
+	var h := 72
+	var step := 4
+	var image := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			var cx := mini(x, w - 1 - x)
+			var cy := mini(y, h - 1 - y)
+			if cx + cy < step * 2:
+				continue                                  # срезанный угол
+			var color: Color
+			if cx < step or cy < step:
+				color = BG                                # рамка
+			elif x < step * 2 or y < step * 2:
+				color = BRASS.lightened(0.3)              # блик
+			elif x >= w - step * 2 or y >= h - step * 2:
+				color = BRASS_DIM                         # тень
+			else:
+				color = BRASS
+			image.set_pixel(x, y, color)
 	_knob = ImageTexture.create_from_image(image)
+	_knob_key = BRASS
 	return _knob
 
 
 static func make_button(text: String, brass: bool, size := 32) -> Button:
-	size = maxi(size, MIN_KEY_SIZE)
+	size = maxi(roundi(size * FONT_SCALE), MIN_KEY_SIZE)
 	var button := Button.new()
 	button.text = Tr.t(text)
 	button.add_theme_font_size_override("font_size", size)
@@ -192,14 +219,15 @@ static func fade_in(control: Control, seconds := 0.18) -> void:
 ## Кнопка-«клавиша» с толстой нижней кромкой: при нажатии вдавливается.
 ## kind: brass, felt (включено), dark (выключено), ember (опасное действие, ржавый).
 static func make_key(text: String, size := 32, kind := "brass") -> Button:
-	size = maxi(size, MIN_KEY_SIZE)
+	size = maxi(roundi(size * FONT_SCALE), MIN_KEY_SIZE)
 	var button := Button.new()
 	button.text = Tr.t(text)
 	button.add_theme_font_size_override("font_size", size)
-	var f := font(display_file())
+	var f := font(display_file(), true)
 	if f != null:
 		button.add_theme_font_override("font", f)
 	style_key(button, kind)
+	button.add_child(KeyTexture.new())                       # крапинка, блики и заклёпки: большие кнопки не выглядят плоскими
 	button.resized.connect(func() -> void: button.pivot_offset = button.size * 0.5)
 	button.button_down.connect(func() -> void: _press_tween(button, 0.95, 0.06))
 	button.button_up.connect(func() -> void: _press_tween(button, 1.0, 0.12))
@@ -241,12 +269,20 @@ static func style_key(button: Button, kind: String) -> void:
 	button.add_theme_stylebox_override("disabled", _key_box(BG, LINE, false))
 
 
+## Пиксельный вид рамки: скошенные углы (по одному «ступенчатому» шагу) и без сглаживания, как у спрайтов.
+static func pixelize(style: StyleBoxFlat, radius := 8) -> StyleBoxFlat:
+	style.set_corner_radius_all(radius)
+	style.corner_detail = 1
+	style.anti_aliasing = false
+	return style
+
+
 static func _key_box(fill: Color, edge: Color, pressed: bool) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+	var style := pixelize(StyleBoxFlat.new(), 8)
 	style.bg_color = fill
-	style.set_corner_radius_all(18)
 	style.border_color = edge
-	style.border_width_bottom = 2 if pressed else 7
+	style.set_border_width_all(4)
+	style.border_width_bottom = 6 if pressed else 12
 	style.content_margin_left = 16
 	style.content_margin_right = 16
 	style.content_margin_top = 13 if pressed else 8
@@ -255,12 +291,11 @@ static func _key_box(fill: Color, edge: Color, pressed: bool) -> StyleBoxFlat:
 
 
 static func _box(fill: Color, filled: bool) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+	var style := pixelize(StyleBoxFlat.new(), 6)
 	style.bg_color = fill
-	style.set_corner_radius_all(10)
 	style.set_content_margin_all(12)
 	if not filled:
-		style.set_border_width_all(1)
+		style.set_border_width_all(2)
 		style.border_color = LINE_STRONG
 	return style
 
@@ -278,12 +313,11 @@ static func rarity_color(rarity: int) -> Color:
 
 
 static func panel_style(fill: Color, border: Color, border_width := 1, radius := 12, margin := 16) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
+	var style := pixelize(StyleBoxFlat.new(), clampi(int(radius / 2.0) * 2 / 2, 4, 10))
 	style.bg_color = fill
-	style.set_corner_radius_all(radius)
 	style.set_content_margin_all(margin)
 	if border_width > 0:
-		style.set_border_width_all(border_width)
+		style.set_border_width_all(maxi(2, border_width + (border_width % 2)))
 		style.border_color = border
 	return style
 
@@ -320,12 +354,10 @@ static func make_bar(ratio: float, color := BRASS, height := 12) -> ProgressBar:
 	bar.value = clampf(ratio, 0.0, 1.0)
 	bar.show_percentage = false
 	bar.custom_minimum_size.y = height
-	var back := StyleBoxFlat.new()
+	var back := pixelize(StyleBoxFlat.new(), 4)
 	back.bg_color = Color(1, 1, 1, 0.09)      # светлее фона: пустая шкала видна на тёмных панелях
-	back.set_corner_radius_all(4)
-	var fill := StyleBoxFlat.new()
+	var fill := pixelize(StyleBoxFlat.new(), 4)
 	fill.bg_color = color
-	fill.set_corner_radius_all(4)
 	bar.add_theme_stylebox_override("background", back)
 	bar.add_theme_stylebox_override("fill", fill)
 	return bar

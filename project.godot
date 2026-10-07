@@ -24,6 +24,10 @@ boot_splash/show_image=false
 config/icon="res://icon.png"
 run/quit_on_go_back=false
 
+[autoload]
+
+GodotPlayGameServices="*res://addons/GodotPlayGameServices/scripts/autoloads/godot_play_game_services.gd"
+
 [display]
 
 window/size/viewport_width=1080
@@ -41,6 +45,10 @@ renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_2d=2
 textures/canvas_textures/default_texture_filter=2
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg")
 
 [gui]
 

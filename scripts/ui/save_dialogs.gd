@@ -32,6 +32,39 @@ func import_code() -> void:
 					_toast.call(Tr.t("Код не подходит или повреждён")))
 
 
+## В облаке прогресс больше: предложить загрузить. remote — сводка (CloudSave.summary_of), text — само сохранение.
+func offer_cloud(remote: Dictionary, text: String, on_decline: Callable) -> void:
+	var modal := Modal.new()
+	modal.body.add_child(UiTheme.make_label("Найден прогресс в облаке", 50, UiTheme.TEXT, true))
+	var local := CloudSave.summary_of(state.serialize())
+	var note := UiTheme.make_label(Tr.t("В облаке: заработано %s, планета %d.") % [NumberFormat.short(float(remote["lifetime"])), int(remote["planet"]) + 1], 30, UiTheme.BRASS)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	modal.body.add_child(note)
+	var here := UiTheme.make_label(Tr.t("На этом устройстве: заработано %s, планета %d.") % [NumberFormat.short(float(local["lifetime"])), int(local["planet"]) + 1], 30, UiTheme.MUTE)
+	here.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	modal.body.add_child(here)
+	var warn := UiTheme.make_label("Загрузка заменит прогресс на этом устройстве. Запасная копия сохранится.", 26, UiTheme.MUTE)
+	warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	modal.body.add_child(warn)
+	var load_button := UiTheme.make_key("Загрузить из облака", 34, "brass")
+	load_button.custom_minimum_size.y = 96
+	load_button.pressed.connect(func() -> void:
+			load_button.disabled = true
+			state.save()                              # текущее уйдёт в запасную копию
+			if ClickerState.import_save_text(text):
+				_reload()
+			else:
+				modal.close()
+				_toast.call(Tr.t("Облачное сохранение повреждено")))
+	modal.body.add_child(load_button)
+	var keep := UiTheme.make_button("Оставить это устройство", false, 30)
+	keep.pressed.connect(func() -> void:
+			on_decline.call()
+			modal.close())
+	modal.body.add_child(keep)
+	host.add_child(modal)
+
+
 func reset_progress() -> void:
 	_confirm("Сбросить прогресс?", "Все монеты и улучшения будут удалены. Это нельзя отменить.", "Сбросить",
 			func(_modal: Modal) -> void:

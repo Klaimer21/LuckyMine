@@ -44,27 +44,21 @@ func show_daily() -> void:
 		var day_label := UiTheme.make_label(str(i + 1), 24, UiTheme.MUTE)
 		day_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(day_label)
-		var icon_row := CenterContainer.new()
-		icon_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var kind := "coin" if reward.has("coins") else "gem"
 		if claimed_before:
-			icon_row.add_child(Icon.new().setup("check", UiTheme.BRASS_DIM, 36))
+			var done_row := CenterContainer.new()
+			done_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			done_row.add_child(Icon.new().setup("check", UiTheme.BRASS_DIM, 36))
+			box.add_child(done_row)
 		else:
-			icon_row.add_child(Icon.new().setup(kind, UiTheme.BRASS if kind == "coin" else Color(0.55, 0.86, 0.90), 36))
-		box.add_child(icon_row)
-		var text := ""
-		if reward.has("coins"):
-			text = Tr.t("монеты")
-		if reward.has("diamonds"):
-			text = "+%d" % int(reward["diamonds"])
-		if reward.has("points"):
-			text += " +" + Tr.t("очко")
-		if reward.has("dynamite"):
-			text += " +%d " % int(reward["dynamite"]) + Tr.t("дин.")
-		# подпись переносится по словам: все семь ячеек одной ширины, а не по длине текста
-		var amount := UiTheme.make_text(text.strip_edges(), 24, UiTheme.MUTE if claimed_before else UiTheme.TEXT)
-		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(amount)
+			# каждая награда: значок и число (без слов: подписи в узкой ячейке съезжали)
+			if reward.has("coins"):
+				box.add_child(_reward_row("coin", "", UiTheme.BRASS))
+			if reward.has("diamonds"):
+				box.add_child(_reward_row("gem", "+%d" % int(reward["diamonds"]), Color(0.55, 0.86, 0.90)))
+			if reward.has("points"):
+				box.add_child(_reward_row("star", "+%d" % int(reward["points"]), UiTheme.BRASS))
+			if reward.has("dynamite"):
+				box.add_child(_reward_row("dynamite", "+%d" % int(reward["dynamite"]), Color(0.78, 0.35, 0.25)))
 		days.add_child(cell)
 	var claim := UiTheme.make_button("Забрать", true, 36)
 	claim.custom_minimum_size.y = 90
@@ -89,10 +83,26 @@ func show_daily() -> void:
 	host.add_child(modal)
 
 
+## Строка награды: значок и число рядом, по центру ячейки.
+func _reward_row(icon_kind: String, amount: String, color: Color) -> Control:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 4)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(Icon.new().setup(icon_kind, color, 36))
+	if amount != "":
+		row.add_child(UiTheme.make_label(amount, 28, UiTheme.TEXT))
+	return row
+
+
 ## Знакомство: Борк рассказывает, что к чему, и предлагает обучение.
 func show_intro() -> void:
 	var modal := Modal.new()
-	var face := Companion.portrait(400.0)
+	var logo := Companion.logo(380.0)
+	if logo != null:
+		logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		modal.body.add_child(logo)
+	var face := Companion.portrait(320.0, "point")
 	if face != null:
 		face.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		modal.body.add_child(face)
@@ -125,6 +135,10 @@ func format_duration(seconds: float) -> String:
 ## Окно «пока вас не было»: время, монеты, лимит офлайна и что ждёт в журнале.
 func show_offline(earned: float) -> Modal:
 	var modal := Modal.new()
+	var rested := Companion.portrait(260.0, "sleep" if state.offline_away >= 3600.0 else "")
+	if rested != null:
+		rested.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		modal.body.add_child(rested)
 	modal.body.add_child(UiTheme.make_label("С возвращением!", 54, UiTheme.TEXT, true))
 	modal.body.add_child(UiTheme.make_label(Tr.t("Вас не было: %s") % format_duration(state.offline_away), 30, UiTheme.MUTE))
 	var income := UiTheme.make_label("+" + NumberFormat.short(earned), 72, UiTheme.BRASS, true)

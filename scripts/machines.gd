@@ -1,16 +1,19 @@
 class_name Machines
 extends RefCounted
-## Машины: покупаются за монеты, стоят над столом и работают сами (docs/MACHINES.md). Здесь только данные;
+## Машины: покупаются за монеты, стоят на ленте поля и работают сами (docs/MACHINES.md). Здесь только данные;
 ## логика уровней, цен и эффектов — в ClickerState, показ — в MachineStrip.
 
 ## id, название, значок, описание; открытие: unlock_rain — уровень «Камнепада» (0 — не нужно),
 ## unlock_zone — зона шахты (-1 — не нужно), достаточно любого из условий; base_cost — цена первого уровня
 ## (умножается на масштаб планеты), growth — рост цены за уровень, max_level — предел, step — прирост эффекта на уровень
+## planet — планета, с которой открывается машина (0 — Земля). Шаг (step): у Марсохода сдвиг порога руды, у Компрессора доля шанса алмазной жилы,
+## у Экскаватора доля интервала золотой глыбы, у Катапульты доля награды золотой глыбы, у Реактора секунды награды динамита,
+## у Горелки места на складе динамита за уровень (целая часть), у Ванны доля силы хранителя, у Печи доля награды хранителя.
 ## (у Дробилки доля потока «Камнепада», у Конвейера сдвиг порога руды, у Подрывника секунды периода, у Лебёдки доля времени похода).
 const LIST := [
-	{"id": "crusher", "name": "Дробилка", "icon": "crusher", "text": "Сама сбрасывает на стол свои глыбы.",
+	{"id": "crusher", "name": "Дробилка", "icon": "crusher", "text": "Сама подбрасывает на ленту свои глыбы.",
 			"unlock_rain": 5, "unlock_zone": -1, "base_cost": 1500.0, "growth": 1.4, "max_level": 20, "step": 0.03},
-	{"id": "conveyor", "name": "Конвейер", "icon": "conveyor", "text": "Везёт на стол руду: в глыбах чаще попадаются самородки.",
+	{"id": "conveyor", "name": "Конвейер", "icon": "conveyor", "text": "Ускоряет ленту: в глыбах чаще попадаются самородки.",
 			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 1.5e4, "growth": 1.25, "max_level": 15, "step": 0.01},
 	{"id": "lab", "name": "Лаборатория", "icon": "lab", "text": "Из найденной породы варит алмазы: капля за каплей, даже пока вы заняты другим.",
 			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 8.0e3, "growth": 1.15, "max_level": 20, "step": 25.0},
@@ -20,6 +23,24 @@ const LIST := [
 			"unlock_rain": 0, "unlock_zone": 3, "base_cost": 1.35e9, "growth": 1.25, "max_level": 12, "step": 0.04},
 	{"id": "cart", "name": "Вагонетка", "icon": "cart", "text": "Возит золото: «Золотой запал» длится дольше и включается чаще.",
 			"unlock_rain": 0, "unlock_zone": 4, "base_cost": 3.7e12, "growth": 1.25, "max_level": 15, "step": 0.4},
+	# Машины планет (docs/MACHINES_PLANETS.md): planet — с какой планеты (Марс 1, Луна 2, Титан 3, Венера 4) и зоны unlock_zone на ней они
+	# открываются; остаются навсегда. Цена умножается на масштаб текущей планеты, как у остальных.
+	{"id": "rover", "name": "Марсоход", "icon": "px_gear", "text": "Ищет руду: в глыбах чаще попадаются самородки.", "planet": 1,
+			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 20000.0, "growth": 1.25, "max_level": 20, "step": 0.003},
+	{"id": "compressor", "name": "Атмосферный компрессор", "icon": "px_gear", "text": "Давит породу: алмазные жилы выпадают чаще.", "planet": 1,
+			"unlock_rain": 0, "unlock_zone": 3, "base_cost": 2000000000.0, "growth": 1.25, "max_level": 15, "step": 0.03},
+	{"id": "excavator", "name": "Лунный экскаватор", "icon": "px_gear", "text": "Копает золото: золотая глыба появляется чаще.", "planet": 2,
+			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 20000.0, "growth": 1.25, "max_level": 16, "step": 0.015},
+	{"id": "catapult", "name": "Электромагнитная катапульта", "icon": "px_gear", "text": "Разгоняет золотую глыбу: пойманная платит больше.", "planet": 2,
+			"unlock_rain": 0, "unlock_zone": 3, "base_cost": 2000000000.0, "growth": 1.25, "max_level": 15, "step": 0.04},
+	{"id": "reactor", "name": "Криогенный реактор", "icon": "px_gear", "text": "Охлаждает заряд: динамит платит больше секунд дохода.", "planet": 3,
+			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 20000.0, "growth": 1.25, "max_level": 12, "step": 1.0},
+	{"id": "burner", "name": "Метановая горелка", "icon": "px_gear", "text": "Греет склад: динамита помещается больше.", "planet": 3,
+			"unlock_rain": 0, "unlock_zone": 3, "base_cost": 2000000000.0, "growth": 1.25, "max_level": 15, "step": 0.34},
+	{"id": "acid", "name": "Кислотная ванна", "icon": "px_gear", "text": "Разъедает броню: хранители слабее.", "planet": 4,
+			"unlock_rain": 0, "unlock_zone": 1, "base_cost": 20000.0, "growth": 1.25, "max_level": 13, "step": 0.015},
+	{"id": "solar", "name": "Солнечная печь", "icon": "px_gear", "text": "Плавит золото: хранители платят больше и офлайн-доход растёт.", "planet": 4,
+			"unlock_rain": 0, "unlock_zone": 3, "base_cost": 2000000000.0, "growth": 1.25, "max_level": 10, "step": 0.03},
 ]
 
 const BLASTER_BASE_PERIOD := 60.0        # секунд между взрывами на первом уровне (минус step за каждый следующий)
@@ -47,6 +68,36 @@ static func tier_for(level: int, max_level: int) -> int:
 	if share >= 0.8:
 		return 2
 	return 1 if share >= 0.4 else 0
+
+
+## Пиксельные спрайты машин: res://assets/pixel/machines/<облик>/<id>.png, 64×64, показываются ×2 без сглаживания (tools/pixelize.py, docs/PIXEL.md).
+## Пока для облика нет своего файла, берётся деревянный с оттенком облика.
+const SPRITE_DIRS := ["wood", "iron", "steel"]
+const FALLBACK_TINTS := [Color(1, 1, 1), Color(0.78, 0.9, 1.08), Color(1.12, 1.12, 1.18)]
+
+
+## Текстура машины для облика и признак «подкрашена» (своего файла для облика нет); null — спрайтов нет совсем.
+static func sprite_for(id: String, tier: int) -> Array:
+	var own := "res://assets/pixel/machines/%s/%s.png" % [SPRITE_DIRS[clampi(tier, 0, 2)], id]
+	if ResourceLoader.exists(own):
+		return [load(own), false]
+	var wood := "res://assets/pixel/machines/wood/%s.png" % id
+	if ResourceLoader.exists(wood):
+		return [load(wood), tier > 0]
+	return [null, false]
+
+
+## Нулевые уровни всех машин (в том числе планетных).
+static func blank_levels() -> Dictionary:
+	var out := {}
+	for entry in LIST:
+		out[str(entry["id"])] = 0
+	return out
+
+
+## Номер планеты, с которой открывается машина (0 — Земля).
+static func planet_of(entry: Dictionary) -> int:
+	return int(entry.get("planet", 0))
 
 
 static func ids() -> Array:

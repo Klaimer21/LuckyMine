@@ -14,6 +14,7 @@ var _shown := false
 var _time := 0.0
 var _tween: Tween
 var _rise := 0.0
+var _reacting := false
 
 
 func _init() -> void:
@@ -47,6 +48,25 @@ func is_shown() -> bool:
 	return _shown
 
 
+## Борк на пару секунд выглядывает с позой-реакцией на событие; если он уже на экране (подсказка, обучение), не мешает.
+func react(pose: String, seconds := 2.6) -> void:
+	if _figure == null or _shown:
+		return
+	set_pose(pose)
+	appear()
+	get_tree().create_timer(seconds).timeout.connect(func() -> void:
+			if _shown and _reacting:
+				_reacting = false
+				leave())
+	_reacting = true
+
+
+## Сменить позу (пустая строка: обычная).
+func set_pose(pose: String) -> void:
+	if _figure != null:
+		_figure.texture = Companion.texture(pose)
+
+
 func appear() -> void:
 	if _figure == null or _shown:
 		return
@@ -56,6 +76,7 @@ func appear() -> void:
 
 
 func leave() -> void:
+	_reacting = false
 	if _figure == null or not _shown:
 		return
 	_shown = false

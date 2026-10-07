@@ -3,25 +3,33 @@ extends RefCounted
 ## Полоса машин над столом: ячейка на каждую машину (закрытая показывает замок и условие), нажатие открывает
 ## карточку с описанием и покупкой. Уровни, цены и эффекты считает ClickerState (docs/MACHINES.md).
 
-const TOP := 366.0                       # под шапкой и кнопкой «Новая шахта», над столом (стол начинается около 548)
-const CELL := Vector2(144, 144)          # цель касания 48 dp
+const TOP := 384.0                       # под шапкой и кнопкой «Новая шахта», над столом (стол начинается около 548)
+## Здание: спрайт 64×64 показывается ×3 (192×192) при четырёх ходах ленты и ×2 (128×128) при пяти и шести; под лентой подпись уровня.
+## Размеры задаёт поле (FieldTable.building_scale), поэтому они переменные.
+var cell_size := Vector2(192, 252)
+var sprite_size := 192.0
+var stand := 192.0                       # от верха ячейки до ленты (ножки здания)
+var _scale_seen := 3
+var _compact_seen := false
+var compact := false                     # подпись уровня поверх здания (тесное поле)
 
 var host: Control
 var state: ClickerState
 
 var _settings: Settings
 var _sfx: Sfx
-var _table: MineTable
+var _table: FieldTable
 var _on_changed: Callable                # куплен уровень: main обновляет остальной интерфейс
 var _on_tier_up: Callable                # новый облик машины: сообщение (main показывает тост)
-var _row: HBoxContainer
+var cover := Rect2()                     # что закрывает поле (шторка улучшений): машины под ней прячутся
+var _row: Control
 var _cells: Dictionary = {}              # id -> {button, icon, lock, label, charge, tween}
 var _card: Modal
 var _card_id := ""
 var _card_parts: Dictionary = {}         # подписи и кнопка открытой карточки
 
 
-func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, sound: Sfx, mine_table: MineTable, on_changed: Callable, on_tier_up: Callable = Callable()) -> MachineStrip:
+func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, sound: Sfx, mine_table: FieldTable, on_changed: Callable, on_tier_up: Callable = Callable()) -> MachineStrip:
 	host = host_node
 	state = game_state
 	_settings = game_settings
@@ -32,51 +40,66 @@ func setup(host_node: Control, game_state: ClickerState, game_settings: Settings
 	return self
 
 
-## Создаёт полосу (при каждой пересборке интерфейса заново): ряд ячеек по центру.
+## Создаёт «здания»: ячейка на каждую машину, она стоит на ленте поля (положение даёт FieldTable.building_anchor).
 func build() -> void:
 	_cells.clear()
-	_row = HBoxContainer.new()
-	_row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_row.offset_top = TOP
-	_row.offset_bottom = TOP + CELL.y
-	_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	_row.add_theme_constant_override("separation", 20)
+	_row = Control.new()
+	_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	host.add_child(_row)
 	for entry in Machines.LIST:
 		_make_cell(entry)
+	update(0.0)
 	refresh()
 
 
 func _make_cell(entry: Dictionary) -> void:
 	var id := str(entry["id"])
 	var button := Button.new()
-	button.custom_minimum_size = CELL
+	button.custom_minimum_size = cell_size
+	button.size = cell_size
 	for style_name in ["normal", "hover", "pressed", "focus", "disabled"]:
 		button.add_theme_stylebox_override(style_name, UiTheme.panel_style(UiTheme.SURFACE, UiTheme.LINE_STRONG, 2, 18, 8))
 	button.resized.connect(func() -> void: button.pivot_offset = button.size * 0.5)
-	var icon := Icon.new().setup(str(entry["icon"]), UiTheme.BRASS, 72)
-	icon.position = Vector2((CELL.x - 72.0) * 0.5, 12.0)
-	icon.pivot_offset = Vector2(36.0, 36.0)
+	var icon := Icon.new().setup(str(entry["icon"]), UiTheme.BRASS, 108)
+	icon.position = Vector2((cell_size.x - 108.0) * 0.5, 40.0)
+	icon.pivot_offset = Vector2(54.0, 54.0)
 	button.add_child(icon)
-	var lock := Icon.new().setup("lock", UiTheme.MUTE, 56)
-	lock.position = Vector2((CELL.x - 56.0) * 0.5, 22.0)
+	# пиксельный спрайт (если есть) заменяет значок; рисуется без сглаживания в целое число раз крупнее
+	var sprite: TextureRect = null
+	var visual: Control = icon
+	if Machines.sprite_for(id, 0)[0] != null:
+		sprite = TextureRect.new()
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		sprite.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		sprite.size = Vector2(sprite_size, sprite_size)
+		sprite.position = Vector2(0.0, 0.0)
+		sprite.pivot_offset = Vector2(sprite_size * 0.5, sprite_size * 0.5)
+		sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(sprite)
+		icon.visible = false
+		visual = sprite
+	var lock := Icon.new().setup("lock", UiTheme.MUTE, 72)
+	lock.position = Vector2((cell_size.x - 72.0) * 0.5, 56.0)
 	button.add_child(lock)
 	var label := UiTheme.make_label("", 30, UiTheme.TEXT)
-	label.position = Vector2(0.0, 92.0)
-	label.size = Vector2(CELL.x, 40.0)
+	label.position = Vector2(0.0, stand + 22.0)
+	label.size = Vector2(cell_size.x, 36.0)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_outline_color", UiTheme.BG)
+	label.add_theme_constant_override("outline_size", 8)
 	button.add_child(label)
 	var charge := UiTheme.make_bar(0.0, UiTheme.BRASS, 10)         # заряд Подрывника до следующего взрыва
-	charge.position = Vector2(14.0, 126.0)
-	charge.size = Vector2(CELL.x - 28.0, 10.0)
+	charge.position = Vector2(24.0, 2.0)
+	charge.size = Vector2(cell_size.x - 48.0, 8.0)
 	charge.visible = false
 	button.add_child(charge)
 	button.pressed.connect(func() -> void: _open_card(id))
 	button.button_down.connect(func() -> void: _press(button, 0.95, 0.06))
 	button.button_up.connect(func() -> void: _press(button, 1.0, 0.12))
 	_row.add_child(button)
-	_cells[id] = {"button": button, "icon": icon, "lock": lock, "label": label, "charge": charge, "tween": null}
+	_cells[id] = {"button": button, "icon": icon, "sprite": sprite, "visual": visual, "lock": lock, "label": label, "charge": charge, "tween": null}
 
 
 func _press(button: Control, target: float, seconds: float) -> void:
@@ -85,18 +108,49 @@ func _press(button: Control, target: float, seconds: float) -> void:
 	button.create_tween().tween_property(button, "scale", Vector2(target, target), seconds).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
-## Каждый кадр: Дробилка сбрасывает глыбы над своей ячейкой; индикатор заряда Подрывника.
+## Каждый кадр: ячейки стоят на своих местах ленты; индикатор заряда Подрывника.
 func update(_delta: float) -> void:
-	if _row == null or _table == null or _table.camera == null:
+	if _row == null or _table == null:
 		return
-	var crusher: Dictionary = _cells.get("crusher", {})
-	if not crusher.is_empty():
-		var button: Button = crusher["button"]
-		if button.is_inside_tree() and button.size.x > 1.0:
-			_table.set_crusher_screen_x(button.global_position.x + button.size.x * 0.5)
+	if _table.building_scale() != _scale_seen or _table.building_compact() != _compact_seen:
+		_apply_scale(_table.building_scale(), _table.building_compact())
+	for id in _cells:
+		var button: Button = _cells[id]["button"]
+		var here: bool = _table.has_building(str(id))
+		button.position = _table.building_anchor(str(id)) + Vector2(-cell_size.x * 0.5, -stand + 4.0)
+		button.visible = here and not (cover.size.x > 0.0 and cover.intersects(Rect2(button.position, cell_size)))
 	var blaster: Dictionary = _cells.get("blaster", {})
 	if not blaster.is_empty():
 		(blaster["charge"] as ProgressBar).value = _table.blaster_charge()
+
+
+## Поле уплотнилось (новые ходы ленты): ячейки уменьшаются или возвращаются к прежнему размеру.
+func _apply_scale(scale: int, tight: bool) -> void:
+	_scale_seen = scale
+	_compact_seen = tight
+	compact = tight
+	sprite_size = 64.0 * scale
+	stand = sprite_size
+	cell_size = Vector2(sprite_size, sprite_size + (10.0 if tight else 60.0))
+	for id in _cells:
+		var cell: Dictionary = _cells[id]
+		var button: Button = cell["button"]
+		button.custom_minimum_size = cell_size
+		button.size = cell_size
+		if cell["sprite"] != null:
+			var sprite: TextureRect = cell["sprite"]
+			sprite.size = Vector2(sprite_size, sprite_size)
+			sprite.pivot_offset = Vector2(sprite_size * 0.5, sprite_size * 0.5)
+		(cell["icon"] as Icon).position = Vector2((cell_size.x - 108.0) * 0.5, 40.0)
+		(cell["lock"] as Icon).position = Vector2((cell_size.x - 72.0) * 0.5, stand * 0.25)
+		(cell["label"] as Label).size = Vector2(cell_size.x, 36.0)
+		(cell["charge"] as ProgressBar).size = Vector2(cell_size.x - 48.0, 8.0)
+		if cell["tween"] != null:
+			(cell["tween"] as Tween).kill()
+		cell["tween"] = null           # анимации привязаны к старым координатам
+		var visual: Control = cell["visual"]
+		visual.position = Vector2.ZERO if cell["sprite"] != null else visual.position
+	refresh()
 
 
 ## Подписи и состояние ячеек: закрыта (замок и условие), открыта (значок и уровень), можно купить (латунная рамка).
@@ -116,18 +170,24 @@ func refresh() -> void:
 		machine_icon.color = Machines.TIER_COLORS[tier]
 		machine_icon.tier = tier
 		machine_icon.queue_redraw()
+		var visual: Control = cell["visual"]
+		if cell["sprite"] != null:
+			var found: Array = Machines.sprite_for(id, tier)
+			(cell["sprite"] as TextureRect).texture = found[0]
+			(cell["sprite"] as TextureRect).modulate = Machines.FALLBACK_TINTS[tier] if bool(found[1]) else Color.WHITE
 		if unlocked and cell.has("tier") and tier > int(cell["tier"]):
 			_tier_up(cell, id, tier)
 		cell["tier"] = tier
-		machine_icon.visible = unlocked
+		visual.visible = unlocked
 		(cell["lock"] as Icon).visible = not unlocked
 		(cell["label"] as Label).text = (Tr.t("Ур. %d") % level) if unlocked else _lock_text(entry)
+		(cell["label"] as Label).position.y = (stand - 40.0 if compact else stand + 22.0) if unlocked else stand * 0.7      # у здания подпись под лентой, у закрытого под замком
 		(cell["label"] as Label).add_theme_color_override("font_color", UiTheme.TEXT if unlocked else UiTheme.MUTE)
 		(cell["charge"] as ProgressBar).visible = id == "blaster" and unlocked and level > 0
 		var border := UiTheme.BRASS if affordable else UiTheme.LINE_STRONG
 		var button: Button = cell["button"]
 		for style_name in ["normal", "hover", "pressed", "focus", "disabled"]:
-			button.add_theme_stylebox_override(style_name, UiTheme.panel_style(UiTheme.FELT if unlocked and level > 0 else UiTheme.SURFACE, border, 3 if affordable else 2, 18, 8))
+			button.add_theme_stylebox_override(style_name, UiTheme.panel_style(Color(UiTheme.FELT if unlocked and level > 0 else UiTheme.SURFACE, 0.78), border, 3 if affordable else 2, 18, 8))
 		_animate(cell, id, unlocked and level > 0 and not _settings.reduce_motion)
 	if _card != null and is_instance_valid(_card) and not _card.is_queued_for_deletion():
 		_fill_card()
@@ -137,6 +197,9 @@ func refresh() -> void:
 func _lock_text(entry: Dictionary) -> String:
 	if int(entry["unlock_rain"]) > 0:
 		return "%d/%d" % [mini(int(state.levels["rain"]), int(entry["unlock_rain"])), int(entry["unlock_rain"])]
+	var from := Machines.planet_of(entry)
+	if from > 0:
+		return Tr.t("%s, зона %d") % [Tr.t(Biomes.planet_name(from)), int(entry["unlock_zone"])]
 	return Tr.t("Зона %d") % int(entry["unlock_zone"])
 
 
@@ -155,7 +218,7 @@ func _tier_up(cell: Dictionary, id: String, tier: int) -> void:
 ## Работающая машина движется по-своему: Дробилка трясётся, Конвейер ходит из стороны в сторону, Лаборатория «булькает»,
 ## Подрывник качает поршень, Лебёдка раскачивается, Вагонетка катается. «Меньше эффектов» останавливает движение.
 func _animate(cell: Dictionary, id: String, working: bool) -> void:
-	var icon: Icon = cell["icon"]
+	var icon: Control = cell["visual"]
 	if working and cell["tween"] == null and icon.is_inside_tree():
 		var base := icon.position
 		var tween := icon.create_tween().set_loops()
@@ -195,7 +258,13 @@ func cell_rect(id: String) -> Rect2:
 
 
 func row_rect() -> Rect2:
-	return _row.get_global_rect() if _row != null else Rect2()
+	var rect := Rect2()
+	var first := true
+	for id in _cells:
+		var r := (_cells[id]["button"] as Control).get_global_rect()
+		rect = r if first else rect.merge(r)
+		first = false
+	return rect
 
 
 # ---------- Карточка машины ----------
@@ -290,7 +359,7 @@ func _effect_text(id: String, level: int) -> String:
 		"crusher":
 			text = Tr.t("+%.1f глыб в секунду") % state.crusher_rate()
 		"conveyor":
-			text = Tr.t("руда в %d%% глыб") % roundi(100.0 * (1.0 - MineTable.ORE_LIMITS[0] + state.ore_shift()))
+			text = Tr.t("руда в %d%% глыб") % roundi(100.0 * (1.0 - FieldTable.ORE_LIMITS[0] + state.ore_shift()))
 		"blaster":
 			var interval := state.blaster_interval()
 			text = Tr.t("не куплен") if interval <= 0.0 else Tr.t("взрыв раз в %d с, награда %d с дохода") % [roundi(interval), roundi(Machines.BLASTER_SECONDS)]
@@ -301,6 +370,22 @@ func _effect_text(id: String, level: int) -> String:
 			text = Tr.t("не куплена") if period <= 0.0 else Tr.t("алмаз раз в %d с") % roundi(period)
 		"cart":
 			text = Tr.t("«Запал» %.1f с, пауза %.1f с") % [state.mini_seconds(), state.mini_cooldown_seconds()]
+		"rover":
+			text = Tr.t("руда в %d%% глыб") % roundi(100.0 * (1.0 - FieldTable.ORE_LIMITS[0] + state.ore_shift()))
+		"compressor":
+			text = Tr.t("алмазные жилы чаще на %d%%") % roundi(100.0 * float(Machines.data("compressor")["step"]) * level)
+		"excavator":
+			text = Tr.t("золотая глыба чаще на %d%%") % roundi(100.0 * float(Machines.data("excavator")["step"]) * level)
+		"catapult":
+			text = Tr.t("пойманная золотая глыба платит +%d%%") % roundi(100.0 * float(Machines.data("catapult")["step"]) * level)
+		"reactor":
+			text = Tr.t("динамит платит +%d с дохода") % roundi(float(Machines.data("reactor")["step"]) * level)
+		"burner":
+			text = Tr.t("склад динамита +%d") % int(float(Machines.data("burner")["step"]) * level + 0.01)
+		"acid":
+			text = Tr.t("хранители слабее на %d%%") % roundi(100.0 * float(Machines.data("acid")["step"]) * level)
+		"solar":
+			text = Tr.t("награда хранителей +%d%%, офлайн-доход +%d%%") % [roundi(100.0 * float(Machines.data("solar")["step"]) * level), level]
 	state.machines[id] = saved
 	return text
 

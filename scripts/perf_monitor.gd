@@ -10,7 +10,7 @@ var stress_active := false
 var host: Control
 var state: ClickerState
 var settings: Settings
-var table: MineTable
+var table: FieldTable
 var viewport: Viewport
 var _on_low_fps: Callable          # вызывается один раз, когда игра долго идёт на низком FPS
 var _fps_label: Label
@@ -25,7 +25,7 @@ var _watch_frames := 0
 var _hint_done := false
 
 
-func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, mine_table: MineTable,
+func setup(host_node: Control, game_state: ClickerState, game_settings: Settings, mine_table: FieldTable,
 		view: Viewport, on_low_fps: Callable) -> PerfMonitor:
 	host = host_node
 	state = game_state

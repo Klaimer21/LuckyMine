@@ -111,8 +111,9 @@ func build(panel: Node) -> void:
 	style.set_border_width_all(0)
 	style.border_width_top = 2
 	style.border_color = UiTheme.BRASS_DIM
-	style.corner_radius_top_left = 22
-	style.corner_radius_top_right = 22
+	UiTheme.pixelize(style, 12)
+	style.corner_radius_bottom_left = 0
+	style.corner_radius_bottom_right = 0
 	style.content_margin_left = 24
 	style.content_margin_right = 24
 	style.content_margin_top = 18

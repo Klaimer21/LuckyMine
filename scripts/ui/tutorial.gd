@@ -65,6 +65,7 @@ func start() -> void:
 	_index = -1
 	visible = true
 	if peek != null:
+		peek.set_pose("point")
 		peek.appear()
 	_advance()
 
@@ -149,5 +150,5 @@ func _draw() -> void:
 	frame.bg_color = Color(0, 0, 0, 0)
 	frame.set_border_width_all(3)
 	frame.border_color = Color(UiTheme.BRASS, pulse)
-	frame.set_corner_radius_all(18)
+	UiTheme.pixelize(frame, 10)
 	draw_style_box(frame, hole)

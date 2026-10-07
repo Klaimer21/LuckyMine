@@ -10,6 +10,15 @@ var follow: BaseButton                 # кнопка, на которой ле�
 var _enabled_color := Color.WHITE
 var outline := Color(0, 0, 0, 0)       # контур алмаза (если задан): виден и на светлой латуни
 
+## Пиксельные значки (assets/pixel/icons, 24x24): вид значка -> имя файла. Остальные виды рисуются кодом.
+const SPRITES := {
+	"coin": "coin", "gem": "gem", "lock": "lock", "chest": "chest", "crown": "crown", "back": "back", "spark": "spark",
+	"bag": "bag", "gear": "gear", "clock": "clock", "check": "check", "rock": "rock", "dynamite": "dynamite",
+	"journal": "journal", "cross": "close", "star": "star",
+	"ore_copper": "../ores/copper", "ore_iron": "../ores/iron", "ore_gold": "../ores/gold", "ore_diamond": "../ores/diamond",
+}
+static var _sprite_cache := {}
+
 
 func setup(p_kind: String, p_color: Color, px: float) -> Icon:
 	kind = p_kind
@@ -17,6 +26,7 @@ func setup(p_kind: String, p_color: Color, px: float) -> Icon:
 	custom_minimum_size = Vector2(px, px)
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	width = maxf(2.0, px / 12.0)
 	queue_redraw()
 	return self
@@ -38,8 +48,31 @@ func _sync_with_button() -> void:
 		queue_redraw()
 
 
+## Пиксельный спрайт значка или null (тогда значок рисуется кодом).
+static func sprite_for(p_kind: String) -> Texture2D:
+	if not _sprite_cache.has(p_kind):
+		var path := ""
+		if SPRITES.has(p_kind):
+			path = "res://assets/pixel/icons/%s.png" % SPRITES[p_kind]
+		elif p_kind.begins_with("px_"):                  # px_<имя>: любой значок из assets/pixel/icons
+			path = "res://assets/pixel/icons/%s.png" % p_kind.substr(3)
+		elif p_kind.begins_with("trip_"):                # trip_<имя>: значки экспедиций, 48x48
+			path = "res://assets/pixel/trips/%s.png" % p_kind.substr(5)
+		elif p_kind.begins_with("find_"):                # find_<имя>: находки экспедиций
+			path = "res://assets/pixel/finds/%s.png" % p_kind.substr(5)
+		_sprite_cache[p_kind] = load(path) if path != "" and ResourceLoader.exists(path) else null
+	return _sprite_cache[p_kind]
+
+
 func _draw() -> void:
 	var s := minf(size.x, size.y)
+	var sprite := sprite_for(kind)
+	if sprite != null:
+		var tint := Color(1, 1, 1, color.a)
+		if follow != null and follow.disabled:
+			tint = Color(0.55, 0.55, 0.55, color.a)
+		draw_texture_rect(sprite, Rect2(Vector2.ZERO, Vector2(s, s)), false, tint)
+		return
 	match kind:
 		"coin":
 			draw_circle(Vector2(s, s) / 2.0, s * 0.46, color)

@@ -67,6 +67,29 @@ static func planet_name(planet: int) -> String:
 	return str(PLANETS[planet]["name"]) if planet < PLANETS.size() else "Экзопланета %d" % (planet - PLANETS.size() + 1)
 
 
+## Пиксельный спрайт планеты (assets/pixel/planets, 48x48), показывать с фильтром nearest; null, если файла нет.
+static func planet_sprite(planet: int) -> Texture2D:
+	var names: Array = ["earth", "mars", "moon", "titan", "venus"]
+	var file: String = str(names[planet]) if planet < names.size() else "exo"
+	var path := "res://assets/pixel/planets/%s.png" % file
+	return load(path) as Texture2D if ResourceLoader.exists(path) else null
+
+
+## Картинка планеты нужной стороны (кратной 48 лучше всего) или null.
+static func planet_picture(planet: int, side: float) -> TextureRect:
+	var tex := planet_sprite(planet)
+	if tex == null:
+		return null
+	var rect := TextureRect.new()
+	rect.texture = tex
+	rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.custom_minimum_size = Vector2(side, side)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rect
+
+
 ## Особенность планеты (строка-ключ) и её описание; на экзопланетах циклом повторяются.
 static func planet_mod(planet: int) -> String:
 	return str(PLANETS[planet % PLANETS.size()]["mod"])

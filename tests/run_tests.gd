@@ -26,6 +26,8 @@ func _init() -> void:
 	_test_machines_stage1()
 	_test_machines_stage2()
 	_test_machine_tiers()
+	_test_planet_machines()
+	_test_cloud_save()
 	_test_cart_in_play()
 	_test_seasons()
 	_test_version()
@@ -135,7 +137,7 @@ func _test_ads() -> void:
 	var rich := ClickerState.new()
 	rich.coins = 1.0e300
 	_check(rich.buy_n("rain", -5) == 0 and rich.buy_n("rain", 1000000) == 0, "negative and absurd bulk buys rejected")
-	_check(ClickerState.import_code("LM1:" + "A".repeat(5000000)) == false, "oversized code rejected")
+	_check(ClickerState.import_code("LM2:" + "A".repeat(5000000)) == false, "oversized code rejected")
 
 
 func _test_autobuy() -> void:
@@ -531,6 +533,53 @@ func _test_time() -> void:
 	var loot := state.claim_expedition()
 	_check(not loot.is_empty() and float(loot["coins"]) >= 100.0, "expedition pays coins")
 	_check(not state.expedition_active() and state.claim_expedition().is_empty(), "expedition cannot be claimed twice")
+	_check(loot.has("relic"), "expedition result tells which curiosity came (or none)")
+	# коллекция диковинок: счётчик растёт, переживает сохранение, достижение считает виды
+	var curio := ClickerState.new()
+	curio.relics["bone"] = 2
+	curio.relics["map"] = 1
+	_check(curio.relic_kinds() == 2, "relic kinds counted")
+	var curio_back := ClickerState.new()
+	curio_back.load_from_text(curio.serialize())
+	_check(int(curio_back.relics["bone"]) == 2 and int(curio_back.relics["map"]) == 1 and int(curio_back.relics["coin"]) == 0, "relics survive save and load")
+	var collector := {}
+	for a in Retention.ACHIEVEMENTS:
+		if a["id"] == "relics4":
+			collector = a
+	_check(not collector.is_empty() and not curio.achievement_done(collector), "collector achievement needs all four relics")
+	curio.relics["coin"] = 1
+	curio.relics["crystal"] = 1
+	_check(curio.achievement_done(collector), "collector achievement done with all four")
+	_check(is_equal_approx(curio.relic_multiplier(), 1.12), "full relic set gives x1.12")
+	_check(is_equal_approx(curio_back.relic_multiplier(), 1.04), "two relic kinds give x1.04")
+	_check(is_equal_approx(ClickerState.new().relic_multiplier(), 1.0), "no relics, no bonus")
+	# новые ветки навыков: эффекты по уровням, цены, сохранение и сброс
+	var sk := ClickerState.new()
+	_check(sk.hand_payout_factor() == 1.0 and sk.rocks_per_throw() == 1 and is_equal_approx(sk.relic_chance(), 0.4), "new skills do nothing at level 0")
+	sk.skills["hand"] = 4
+	_check(is_equal_approx(sk.hand_payout_factor(), 2.0) and sk.rocks_per_throw() == 3, "hand skill: x2 coins and +2 rocks per tap")
+	sk.skills["trips"] = 4
+	_check(is_equal_approx(sk.relic_chance(), 1.0) and is_equal_approx(sk.expedition_bonus(), 1.3), "trips skill: relic every trip, +30% loot")
+	_check(is_equal_approx(sk.expedition_time_factor(), 0.85), "trips skill shortens expeditions")
+	sk.skills["guard"] = 4
+	_check(is_equal_approx(sk.boss_hp_factor(), 0.68) and is_equal_approx(sk.boss_reward_factor(), 1.5625) and is_equal_approx(sk.golden_payout_factor(), 1.5), "guard skill numbers")
+	sk.skills["machines"] = 4
+	_check(is_equal_approx(sk.machine_boost_seconds(), 600.0), "machines skill doubles the ad boost")
+	sk.skills["shift"] = 4
+	_check(is_equal_approx(sk.offline_cap_seconds(), ClickerState.OFFLINE_CAP_SECONDS + 6.0 * 3600.0), "shift skill: offline cap +6 h")
+	var sk_back := ClickerState.new()
+	sk_back.load_from_text(sk.serialize())
+	var all_new := true
+	for branch in ["hand", "trips", "guard", "machines", "shift"]:
+		all_new = all_new and sk_back.skill_level(branch) == 4
+	_check(all_new, "new skills survive save and load")
+	var tree_cost := 0
+	for branch in Skills.BRANCHES:
+		var costs: Array = Skills.costs_of(str(branch["id"]))
+		_check(costs.size() == Skills.MAX_LEVEL and (branch["nodes"] as Array).size() == Skills.MAX_LEVEL, "branch %s has 4 costs and 4 nodes" % branch["id"])
+	var points_before := sk_back.skill_points
+	sk_back.respec()
+	_check(sk_back.skill_points > points_before and sk_back.skill_level("hand") == 0, "respec returns points from new branches")
 
 	# часы откатили назад: поход не растягивается дольше своей длительности
 	_set_noon()
@@ -653,7 +702,12 @@ func _test_save_load() -> void:
 	state.save()
 	var code := state.export_code()
 	_check(ClickerState.import_code(code), "export code imports")
-	_check(not ClickerState.import_code("LM1:" + code.substr(4, 40) + "!!" + code.substr(46)), "damaged code rejected")
+	_check(not ClickerState.import_code(code), "the same code cannot be used twice on one device")
+	_check(not ClickerState.import_code("LM2:" + code.substr(4, 40) + "!!" + code.substr(46)), "damaged code rejected")
+	var late_code := state.export_code()
+	ClickerState.clock_offset += ClickerState.CODE_TTL + 60.0
+	_check(not ClickerState.import_code(late_code), "expired code is rejected")
+	ClickerState.clock_offset -= ClickerState.CODE_TTL + 60.0
 	_check(not ClickerState.import_code("garbage"), "garbage code rejected")
 	var imported := ClickerState.new()
 	imported.load_save()
@@ -667,6 +721,13 @@ func _test_save_load() -> void:
 	var recovered := ClickerState.new()
 	recovered.load_save()
 	_check(recovered.stardust == 7, "backup used when save is corrupt")
+	var paid := ClickerState.new()
+	paid.ads_removed = true
+	var paid_code := paid.export_code()
+	_check(ClickerState.import_code(paid_code), "a code with a purchase imports")
+	var after_paid := ClickerState.new()
+	after_paid.load_save()
+	_check(not after_paid.ads_removed, "purchases do not travel with a code")
 	# враждебные типы и значения не роняют загрузку
 	var hostile := FileAccess.open(ClickerState.SAVE_PATH, FileAccess.WRITE)
 	hostile.store_string('{"coins": -5, "meta": [1], "skills": 3, "finds": "x", "levels": null, "expedition_type": 99, "dynamite_stock": -4, "diamonds": 1e30, "planet": 1e9}')
@@ -687,3 +748,99 @@ func _test_save_load() -> void:
 	if had_backup:
 		var restore_backup := FileAccess.open(ClickerState.BACKUP_PATH, FileAccess.WRITE)
 		restore_backup.store_string(backup_copy)
+
+
+## Машины планет: открытие по планете и зоне, остаются навсегда, эффекты по уровням, число ходов ленты.
+func _test_planet_machines() -> void:
+	var state := ClickerState.new()
+	state.update_machine_unlocks()
+	_check(not state.machine_unlocked("rover") and state.field_lanes() == 4, "no planet machines on Earth, 4 lanes")
+	state.planet = 1
+	state.total_earned = 0.0
+	state.update_machine_unlocks()
+	_check(not state.machine_unlocked("rover"), "Mars machines need a Mars zone")
+	state.total_earned = Biomes.LIST[1]["from"] * state.planet_scale() * 1.01
+	var opened := state.update_machine_unlocks()
+	_check(opened.has("rover") and not opened.has("compressor") and state.field_lanes() == 5, "rover opens in Mars zone 1, lane 5 appears")
+	state.total_earned = Biomes.LIST[3]["from"] * state.planet_scale() * 1.01
+	_check(state.update_machine_unlocks().has("compressor"), "compressor opens in Mars zone 3")
+	state.planet = 2
+	state.total_earned = 0.0
+	state.update_machine_unlocks()
+	_check(state.machine_unlocked("rover") and state.machine_unlocked("compressor") and not state.machine_unlocked("excavator"), "Mars machines stay on the Moon, Moon ones still locked")
+	state.planet = 3
+	state.update_machine_unlocks()
+	_check(state.machine_unlocked("excavator") and state.machine_unlocked("catapult"), "reaching Titan opens the Moon machines as passed")
+	state.planet = 4
+	state.total_earned = Biomes.LIST[1]["from"] * state.planet_scale() * 1.01
+	state.update_machine_unlocks()
+	_check(state.field_lanes() == 6, "Titan machines add lane 6")
+	# эффекты по уровням
+	var fx := ClickerState.new()
+	var base_shift := fx.ore_shift()
+	fx.machines["rover"] = 20
+	_check(is_equal_approx(fx.ore_shift(), base_shift + 0.06), "rover shifts the ore threshold")
+	var diamonds0 := fx.diamond_chance_factor()
+	fx.machines["compressor"] = 15
+	_check(is_equal_approx(fx.diamond_chance_factor(), diamonds0 * 1.45), "compressor: +45% diamond veins")
+	var golden0 := fx.golden_interval_factor()
+	fx.machines["excavator"] = 16
+	_check(is_equal_approx(fx.golden_interval_factor(), golden0 * 0.76), "excavator: golden rock interval -24%")
+	var pay0 := fx.golden_payout_factor()
+	fx.machines["catapult"] = 15
+	_check(is_equal_approx(fx.golden_payout_factor(), pay0 * 1.6), "catapult: golden rock pays +60%")
+	var sec0 := fx.dynamite_seconds()
+	fx.machines["reactor"] = 12
+	_check(is_equal_approx(fx.dynamite_seconds(), sec0 + 12.0), "reactor: +12 s of dynamite income")
+	var cap0 := fx.dynamite_max()
+	fx.machines["burner"] = 15
+	_check(fx.dynamite_max() == cap0 + 5, "burner: +5 dynamite storage")
+	var hp0 := fx.boss_hp_factor()
+	fx.machines["acid"] = 13
+	_check(is_equal_approx(fx.boss_hp_factor(), hp0 * (1.0 - 0.195)), "acid: guardians 19.5% weaker")
+	var reward0 := fx.boss_reward_factor()
+	fx.machines["solar"] = 10
+	_check(is_equal_approx(fx.boss_reward_factor(), reward0 * 1.3), "solar: guardian reward +30%")
+	# сохранение и защита от мусора
+	var saved := ClickerState.new()
+	saved.machines["solar"] = 7
+	saved.machines_unlocked["solar"] = true
+	var loaded := ClickerState.new()
+	loaded.load_from_text(saved.serialize())
+	_check(loaded.machine_level("solar") == 7 and loaded.machine_unlocked("solar"), "planet machines persist")
+	var hostile := ClickerState.new()
+	hostile.load_from_text('{"machines": {"solar": 999, "rover": -5}, "machines_unlocked": ["solar"]}')
+	_check(hostile.machine_level("solar") <= 10 and hostile.machine_level("rover") == 0, "hostile planet machine data clamped")
+	for entry in Machines.LIST:
+		_check(Machines.sprite_for(str(entry["id"]), 0)[0] != null, "machine %s has a sprite" % entry["id"])
+
+
+## Облачное сохранение: выбор версии без плагина (CloudSave.decide) и запись облачной копии на место локальной.
+func _test_cloud_save() -> void:
+	_check(not CloudSave.available(), "cloud is unavailable off Android")
+	var low := ClickerState.new()
+	low.lifetime_earned = 1.0e6
+	low.total_earned = 1.0e6
+	var high := ClickerState.new()
+	high.lifetime_earned = 5.0e9
+	high.total_earned = 2.0e9
+	var low_s := CloudSave.summary_of(low.serialize())
+	var high_s := CloudSave.summary_of(high.serialize())
+	_check(bool(low_s["valid"]) and is_equal_approx(float(high_s["lifetime"]), 5.0e9), "summary reads progress from a signed save")
+	_check(CloudSave.decide(low_s, high_s) == "ask", "better cloud progress is offered to the player")
+	_check(CloudSave.decide(high_s, low_s) == "upload", "better device progress goes to the cloud")
+	_check(CloudSave.decide(high_s, high_s) == "same", "equal progress changes nothing")
+	var empty := CloudSave.summary_of("")
+	_check(not bool(empty["valid"]) and CloudSave.decide(low_s, empty) == "upload", "an empty cloud gets the device save")
+	var broken := CloudSave.summary_of('{"payload": "{}", "sig": "forged"}')
+	_check(not bool(broken["valid"]) and CloudSave.decide(low_s, broken) == "upload", "a forged cloud save is ignored")
+	_check(CloudSave.decide(empty, high_s) == "ask", "a device without a valid save takes the cloud one")
+	_check(CloudSave.decide(low_s, {"valid": true, "lifetime": 1.0e6 * 1.01, "last_seen": 0.0}) == "same", "a 1% difference is not a conflict")
+	# запись облачной копии на место локальной
+	_check(ClickerState.import_save_text(high.serialize()), "a signed cloud save is accepted")
+	var after := ClickerState.new()
+	after.load_save()
+	_check(after.lifetime_earned >= 5.0e9 and after.lifetime_earned < 5.1e9, "cloud save lands as the local save")
+	_check(not ClickerState.import_save_text('{"payload": "{}", "sig": "nope"}'), "an unsigned cloud save is rejected")
+	_check(not ClickerState.import_save_text("not json"), "garbage cloud data is rejected")
+

@@ -13,6 +13,15 @@ var _ripples: Array[Dictionary] = []
 var _glints: Array[Dictionary] = []
 var _blasts: Array[Dictionary] = []
 var _flash := 0.0
+var _anims: Array[Dictionary] = []     # покадровые пиксельные эффекты (assets/pixel/fx): вид, место, время, масштаб
+static var _frames := {}
+const ANIMS := {                        # вид: [папка, кадров, секунд, префикс файла]
+	"explosion": ["explosion", 6, 0.62, "e"],
+	"coins": ["coins", 4, 0.7, "c"],
+	"flash": ["flash", 4, 0.24, "f"],
+	"smoke": ["smoke", 4, 0.9, "s"],
+}
+const MAX_ANIMS := 10
 var _rng := RandomNumberGenerator.new()
 
 
@@ -57,6 +66,27 @@ func ripple(at: Vector2) -> void:
 	_ripples.append({"pos": at, "t": 0.0})
 
 
+## Пиксельный эффект по кадрам: kind — explosion, coins, flash; pixel — во сколько раз увеличить (кадр 32x32).
+func play(kind: String, at: Vector2, pixel := 6.0, delay := 0.0) -> void:
+	if reduced and kind != "coins":
+		return
+	if _anims.size() >= MAX_ANIMS or not ANIMS.has(kind) or _textures(kind).is_empty():
+		return
+	_anims.append({"kind": kind, "pos": at, "t": -delay, "pixel": pixel})
+
+
+static func _textures(kind: String) -> Array:
+	if not _frames.has(kind):
+		var spec: Array = ANIMS[kind]
+		var list: Array = []
+		for i in int(spec[1]):
+			var path := "res://assets/pixel/fx/%s/%s%d.png" % [spec[0], spec[3], i]
+			if ResourceLoader.exists(path):
+				list.append(load(path))
+		_frames[kind] = list
+	return _frames[kind]
+
+
 func _process(delta: float) -> void:
 	for i in range(_sparks.size() - 1, -1, -1):
 		_sparks[i]["t"] += delta
@@ -76,10 +106,15 @@ func _process(delta: float) -> void:
 		_glints[i]["t"] += delta
 		if _glints[i]["t"] > 0.45:
 			_glints.remove_at(i)
+	for i in range(_anims.size() - 1, -1, -1):
+		_anims[i]["t"] += delta
+		if _anims[i]["t"] >= float((ANIMS[_anims[i]["kind"]] as Array)[2]):
+			_anims.remove_at(i)
 	queue_redraw()
 
 
 func _draw() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	for spark in _sparks:
 		var t: float = spark["t"]
 		if t < 0.0:
@@ -100,6 +135,15 @@ func _draw() -> void:
 		var e := 1.0 - pow(1.0 - u, 3.0)
 		draw_arc(b["pos"], 40.0 + 1100.0 * e, 0.0, TAU, 96, Color(UiTheme.BRASS, 0.8 * (1.0 - u)), 14.0 * (1.0 - u) + 2.0, true)
 		draw_arc(b["pos"], 20.0 + 700.0 * e, 0.0, TAU, 96, Color(1.0, 0.95, 0.8, 0.5 * (1.0 - u)), 6.0 * (1.0 - u) + 1.0, true)
+	for a in _anims:
+		if float(a["t"]) < 0.0:
+			continue                                   # ещё не началось (отложенный дым)
+		var spec: Array = ANIMS[a["kind"]]
+		var frames := _textures(str(a["kind"]))
+		var index := mini(int(float(a["t"]) / float(spec[2]) * frames.size()), frames.size() - 1)
+		var px: float = a["pixel"]
+		var side := 32.0 * px
+		draw_texture_rect(frames[index], Rect2((a["pos"] as Vector2) - Vector2(side, side) * 0.5, Vector2(side, side)), false)
 	for g in _glints:
 		var u := float(g["t"]) / 0.45
 		var reach := 70.0 * sin(u * PI)

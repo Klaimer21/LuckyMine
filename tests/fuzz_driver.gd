@@ -63,7 +63,7 @@ func _process(_delta: float) -> bool:
 
 func _act() -> void:
 	var state: ClickerState = _main.state
-	match _rng.randi_range(0, 27):
+	match _rng.randi_range(0, 35):
 		0, 1, 2, 3, 4, 5, 6, 7:
 			var list: Array = []
 			_buttons(root, list)
@@ -135,6 +135,41 @@ func _act() -> void:
 					drag.index = touch.index
 					drag.position = touch.position + Vector2(_rng.randf_range(-80, 80), _rng.randf_range(-80, 80))
 					Input.parse_input_event(drag)
+		28:
+			var table: FieldTable = _main._table
+			table.set_biome(_rng.randi_range(0, 6), _rng.randf() < 0.5)       # смена зоны на лету, в том числе с хранителем на поле
+		29:
+			var field: FieldTable = _main._table
+			field.clear_field()                                               # как после «Новой шахты»
+			field.throw_now()
+		30:
+			var quality_table: FieldTable = _main._table
+			quality_table.set_quality(_rng.randi_range(0, 2))
+			quality_table.stress_rate = [0.0, 0.0, 50.0, 500.0][_rng.randi() % 4]
+			quality_table.auto_throw = _rng.randf() < 0.8
+		31:
+			for branch in state.skills:
+				state.skills[branch] = _rng.randi_range(0, Skills.MAX_LEVEL)    # любые уровни навыков, в том числе новых веток
+			if _rng.randf() < 0.2:
+				state.respec()
+			state.dynamite_stock = mini(state.dynamite_stock, state.dynamite_max())    # как в игре: склад не больше вместимости
+		32:
+			_main._table.hit_boss(_rng.randi_range(0, 30))
+			if _main._table._golden != null:
+				_main._table._hit_golden()
+		33:
+			for i in _rng.randi_range(1, 20):
+				_main._table.tap(Vector2(_rng.randf_range(-100, 1200), _rng.randf_range(-100, 2100)))   # и мимо поля
+		34, 35:
+			# перелёты между планетами и случайные уровни машин (в том числе планетных): ходы ленты растут и убывают
+			state.planet = _rng.randi_range(0, 5)
+			state.total_earned = maxf(state.total_earned, 10.0 ** _rng.randf_range(0.0, 30.0))
+			state.update_machine_unlocks()
+			for id in Machines.ids():
+				if state.machine_unlocked(id) and _rng.randf() < 0.5:
+					state.machines[id] = _rng.randi_range(0, state.machine_max_level(id))
+			_main._machines.refresh()
+			_main._refresh()
 		20, 21:
 			# прыжки системных часов: вперёд, назад, на годы; потом игра «просыпается» как после офлайна
 			var jumps := [60.0, 3600.0, 86400.0, -3600.0, -86400.0 * 3.0, 86400.0 * 365.0, -86400.0 * 365.0]
@@ -161,7 +196,7 @@ func _check() -> void:
 			_bug("%s = %s" % [pair[0], pair[1]])
 	if s.diamonds < 0 or s.skill_points < 0 or s.stardust < 0 or s.veins < 0:
 		_bug("negative currency d=%d sp=%d sd=%d v=%d" % [s.diamonds, s.skill_points, s.stardust, s.veins])
-	if s.dynamite_stock < 0 or s.dynamite_stock > s.dynamite_max():
+	if s.dynamite_stock < 0 or s.dynamite_stock > maxi(s.dynamite_max(), 99):
 		_bug("dynamite_stock %d (max %d)" % [s.dynamite_stock, s.dynamite_max()])
 	for key in s.levels:
 		if int(s.levels[key]) < 0:
@@ -178,6 +213,14 @@ func _check() -> void:
 		_bug("crusher level out of range: %d" % crusher)
 	if crusher > 0 and not s.machine_unlocked("crusher"):
 		_bug("crusher level without unlock")
+	for branch in s.skills:
+		if int(s.skills[branch]) < 0 or int(s.skills[branch]) > Skills.MAX_LEVEL:
+			_bug("skill %s out of range: %s" % [branch, s.skills[branch]])
+	var field: FieldTable = _main._table
+	if field.rock_count() > 400:
+		_bug("rock pile on the field: %d" % field.rock_count())
+	if field.get_child_count() > 300:
+		_bug("too many nodes under the field: %d" % field.get_child_count())
 	var modals := 0
 	for node in _main.find_children("*", "Modal", true, false):
 		if not node.is_queued_for_deletion():
