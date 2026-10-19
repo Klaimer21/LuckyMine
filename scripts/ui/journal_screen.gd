@@ -25,6 +25,9 @@ signal cart_roll
 signal pass_claim(track: String, level: int)
 signal pass_claim_all
 signal pass_buy
+signal pet_summon(count: int)
+signal pet_toggle(id: String)
+signal tower_fight
 
 const ORE_NAMES := {1: "Медь", 2: "Железо", 3: "Золото", 4: "Алмаз"}
 ## Пиксельные значки предметов: магазин и реклама (по ключу покупки), достижения (по виду счётчика), экспедиции.
@@ -35,7 +38,7 @@ const SHOP_ICONS := {
 const ACHIEVEMENT_ICONS := {
 	"zone": "px_map", "prestige": "px_hourglass", "gold": "px_bag", "diamond": "gem", "golden": "px_crown", "dynamite": "px_bomb",
 	"boss": "px_shield", "planet": "px_rocket", "rocks": "px_hammer", "meta": "px_key", "set": "px_trophy",
-	"quarry": "px_pickaxe", "rail": "rail_minecart", "research": "px_gear",
+	"quarry": "px_pickaxe", "rail": "rail_minecart", "research": "px_gear", "tower": "px_trophy", "pets": "pet_mole",
 }
 const ORE_ICONS := {1: "ore_copper", 2: "ore_iron", 3: "ore_gold", 4: "ore_diamond"}
 const ORE_COLORS := {1: Color(0.78, 0.47, 0.30), 2: Color(0.50, 0.58, 0.68), 3: Color(0.92, 0.74, 0.32),
@@ -98,9 +101,9 @@ func rebuild() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 
-	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка, 6 забой.
-	# Семь вкладок в один ряд не влезают на телефоне: два ряда (4 + 3).
-	var tab_list := [[0, "Руда"], [6, "Забой"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [3, "Награды"], [4, "Планета"]]
+	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка, 6 забой, 7 друзья.
+	# Восемь вкладок в один ряд не влезают на телефоне: два ряда по четыре.
+	var tab_list := [[0, "Руда"], [6, "Забой"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [7, "Друзья"], [3, "Награды"], [4, "Планета"]]
 	var tabs: HBoxContainer
 	for index in tab_list.size():
 		if index % 4 == 0:
@@ -126,6 +129,9 @@ func rebuild() -> void:
 	_updaters = []
 	if _tab == 6:
 		_build_dig_tab()
+		return
+	if _tab == 7:
+		PetsView.build(_content, state, self)
 		return
 	if _tab == 1:
 		_build_skills()
@@ -264,7 +270,7 @@ func _build_dig_tab() -> void:
 	var modes := HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 8)
 	_content.add_child(modes)
-	var names := [Tr.t("Забой"), Tr.t("Узкоколейка") + "  %d" % state.railway.tickets]
+	var names := [Tr.t("Забой"), Tr.t("Узкоколейка") + "  %d" % state.railway.tickets, Tr.t("Башня")]
 	for mode in names.size():
 		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _dig_mode else "dark")
 		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -276,6 +282,9 @@ func _build_dig_tab() -> void:
 		modes.add_child(key)
 	if _dig_mode == 0:
 		_pick_timer = QuarryView.build_dig(_content, state, self)
+		return
+	if _dig_mode == 2:
+		TowerView.build(_content, state, self)
 		return
 	var note := UiTheme.make_text("Жетон — один бросок кубика: вагонетка едет по рельсам и забирает добычу клетки. Через депо — круг и награда. Жетоны дают ярусы забоя, походы, хранители, наряд дня и ежедневная награда.", 22, UiTheme.MUTE)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

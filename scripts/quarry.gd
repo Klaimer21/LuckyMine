@@ -31,17 +31,18 @@ const JUNK_GOODS := {
 	"rush": {"min": 1, "max": 1, "step": 1, "unit": 5.0, "weight": 7},
 	"skill_point": {"min": 1, "max": 1, "step": 1, "unit": 12.0, "weight": 3},
 	"tickets": {"min": 2, "max": 4, "step": 1, "unit": 1.2, "weight": 15},
+	"baits": {"min": 3, "max": 9, "step": 3, "unit": 6.0, "weight": 12},
 }
 const JUNK_SLOTS := 4
 const JUNK_DISCOUNTS := [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
 
 ## Наряд дня: очки за действие; тема дня (понедельник = 0) утраивает очки своих действий, воскресенье удваивает все.
-const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15, "chest": 8}
+const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15, "chest": 8, "tower": 15, "summon": 2}
 const RUSH_THEMES := [
 	{"name": "День кирки", "actions": ["pick", "layer"]},
 	{"name": "День подрывника", "actions": ["dynamite"]},
 	{"name": "Золотая среда", "actions": ["golden"]},
-	{"name": "День хранителя", "actions": ["boss"]},
+	{"name": "День хранителя", "actions": ["boss", "tower"]},
 	{"name": "День походов", "actions": ["expedition"]},
 	{"name": "Базарный день", "actions": ["junk", "cart", "research"]},
 	{"name": "Воскресный аврал", "actions": []},
@@ -282,14 +283,19 @@ func junk_price(slot: int, s: ClickerState) -> int:
 		return 0
 	var entry: Dictionary = junk_slots[slot]
 	var zone := Biomes.index_for(s.total_earned, s.planet_scale())
-	var full := float(entry["count"]) * float(JUNK_GOODS[str(entry["item"])]["unit"]) * (1.0 + zone)
+	var full := float(entry["count"]) * float(JUNK_GOODS[str(entry["item"])]["unit"]) * _zone_factor(str(entry["item"]), zone)
 	return maxi(1, int(round(full * (1.0 - float(entry["discount"])))))
 
 
 func junk_full_price(slot: int, s: ClickerState) -> int:
 	var entry: Dictionary = junk_slots[slot]
 	var zone := Biomes.index_for(s.total_earned, s.planet_scale())
-	return maxi(1, int(round(float(entry["count"]) * float(JUNK_GOODS[str(entry["item"])]["unit"]) * (1.0 + zone))))
+	return maxi(1, int(round(float(entry["count"]) * float(JUNK_GOODS[str(entry["item"])]["unit"]) * _zone_factor(str(entry["item"]), zone))))
+
+
+## Цены растут с зоной (как и доход алмазов), кроме приманок: призыв за алмазы стоит одинаково на любой глубине.
+static func _zone_factor(item: String, zone: int) -> float:
+	return 1.0 if item == "baits" else 1.0 + zone
 
 
 ## Цена нового набора растёт с каждым обновлением за день: пересматривать товар можно, скупать всё подряд — дорого.
@@ -341,6 +347,8 @@ func junk_buy(slot: int, s: ClickerState) -> Dictionary:
 			s.skill_points += count
 		"tickets":
 			s.railway.tickets += count
+		"baits":
+			s.pets.baits += count
 	s.diamonds -= price
 	entry["sold"] = true
 	note("junk")

@@ -61,14 +61,17 @@ func _screens(language: String) -> void:
 	await _wait(0.5)
 
 	state.start_expedition(1)
-	for tab in 7:
+	for tab in 8:
 		_main._journal._tab = tab
 		_main._journal.open()
 		await _wait(0.4)
 		await _check(language, "журнал, вкладка %d" % tab)
-	for extra in [[3, "_rewards_mode", "пропуск шахтёра"], [6, "_dig_mode", "узкоколейка"]]:
+	state.pets.copies["mole"] = 3
+	state.pets.copies["dragon"] = 1
+	state.pets.equipped = ["mole"]
+	for extra in [[3, "_rewards_mode", "пропуск шахтёра", 1], [6, "_dig_mode", "узкоколейка", 1], [6, "_dig_mode", "башня", 2]]:
 		_main._journal._tab = int(extra[0])
-		_main._journal.set(str(extra[1]), 1)
+		_main._journal.set(str(extra[1]), int(extra[3]))
 		_main._journal.open()
 		await _wait(0.4)
 		await _check(language, "журнал, " + str(extra[2]))
@@ -82,6 +85,13 @@ func _screens(language: String) -> void:
 		if child is Modal:
 			child.queue_free()
 	state.lucky.offer = []
+	await _wait(0.2)
+	_main._rewards.on_tower_fight()
+	await _wait(0.4)
+	await _check(language, "бой в башне")
+	for child in _main._ui.get_children():
+		if child is TowerFight:
+			child.queue_free()
 	await _wait(0.2)
 	_main._settings_screen.open()
 	await _wait(0.4)
@@ -126,6 +136,10 @@ func _check(language: String, screen: String) -> void:
 	await _wait(0.1)
 	# проверяем только то, что игрок видит сверху: окно, иначе журнал или настройки, иначе главный экран
 	var scope: Node = _top_modal()
+	if scope == null:
+		for child in _main._ui.get_children():
+			if child is TowerFight:
+				scope = child                  # бой в башне закрывает весь экран
 	if scope == null and _main._journal.visible:
 		scope = _main._journal
 	elif scope == null and _main._settings_screen.visible:

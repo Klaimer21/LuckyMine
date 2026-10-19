@@ -56,6 +56,8 @@ static func sprite_for(p_kind: String) -> Texture2D:
 			path = "res://assets/pixel/icons/%s.png" % SPRITES[p_kind]
 		elif p_kind.begins_with("px_"):                  # px_<имя>: любой значок из assets/pixel/icons
 			path = "res://assets/pixel/icons/%s.png" % p_kind.substr(3)
+		elif p_kind.begins_with("pet_"):                 # pet_<имя>: питомцы и приманка (tools/make_pet_art.py)
+			path = "res://assets/pixel/pets/%s.png" % p_kind.substr(4)
 		elif p_kind.begins_with("rail_"):                # rail_<имя>: спрайты узкоколейки (tools/make_rail_art.py)
 			path = "res://assets/pixel/rail/%s.png" % p_kind.substr(5)
 		elif p_kind.begins_with("trip_"):                # trip_<имя>: значки экспедиций, 48x48

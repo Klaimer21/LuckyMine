@@ -50,5 +50,7 @@ const ACHIEVEMENTS := [
 	{"id": "quarry10", "name": "Глубокий забой", "text": "Спуститься в забое на 10-й ярус", "kind": "quarry", "goal": 10, "reward": {"diamonds": 5, "points": 1}},
 	{"id": "rail10", "name": "Машинист", "text": "Проехать 10 кругов по узкоколейке", "kind": "rail", "goal": 10, "reward": {"diamonds": 5, "points": 1}},
 	{"id": "research10", "name": "Инженер", "text": "Изучить 10 уровней в мастерской", "kind": "research", "goal": 10, "reward": {"diamonds": 8, "points": 1}},
+	{"id": "tower10", "name": "Покоритель башни", "text": "Пройти 10 этажей башни испытаний", "kind": "tower", "goal": 10, "reward": {"diamonds": 10, "points": 1}},
+	{"id": "pets6", "name": "Зверинец", "text": "Собрать 6 разных питомцев", "kind": "pets", "goal": 6, "reward": {"diamonds": 8, "points": 1}},
 	{"id": "set1", "name": "Полный набор", "text": "Довести все руды до уровня 1", "kind": "set", "goal": 1, "reward": {"diamonds": 3}},
 ]

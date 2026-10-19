@@ -218,7 +218,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	state.play_seconds += delta
-	if state.lucky.tick(delta):
+	if state.lucky.tick(delta * (1.0 + state.pets.bonus("lucky"))):
 		_show_toast(Tr.t("Сундук удачи! Он в шапке, справа от монет."))
 		sfx.play("claim", -6.0)
 	var chests := state.lucky.available()
@@ -697,6 +697,9 @@ func _build_ui() -> void:
 	_journal.pass_claim.connect(_rewards.on_pass_claim)
 	_journal.pass_claim_all.connect(_rewards.on_pass_claim_all)
 	_journal.pass_buy.connect(_rewards.on_pass_buy)
+	_journal.pet_summon.connect(_rewards.on_pet_summon)
+	_journal.pet_toggle.connect(_rewards.on_pet_toggle)
+	_journal.tower_fight.connect(_rewards.on_tower_fight)
 	_settings_screen = SettingsScreen.new()
 	_ui.add_child(_settings_screen)
 	_settings_screen.setup(settings, _table, state)

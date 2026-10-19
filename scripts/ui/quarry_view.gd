@@ -16,7 +16,7 @@ const LOOT_LOOK := {
 }
 const ROCK_TINTS := [Color(1, 1, 1), Color(0.78, 0.72, 0.66), Color(0.56, 0.50, 0.50)]     # значок глыбы по крепости 1, 2, 3
 const ROCK_FILL := Color(0.16, 0.15, 0.14)
-const JUNK_ICONS := {"tickets": "rail_token", "picks": "px_pickaxe", "dynamite": "px_bomb", "finds": "ore_copper", "coins": "px_coins",
+const JUNK_ICONS := {"baits": "pet_bait", "tickets": "rail_token", "picks": "px_pickaxe", "dynamite": "px_bomb", "finds": "ore_copper", "coins": "px_coins",
 		"rush": "px_potion", "skill_point": "px_scroll"}
 const ORE_ICONS := {1: "ore_copper", 2: "ore_iron", 3: "ore_gold"}
 const ORE_NAMES := {1: "медь", 2: "железо", 3: "золото"}
@@ -204,6 +204,8 @@ static func junk_title(entry: Dictionary) -> String:
 			return Tr.t("Очко навыков")
 		"tickets":
 			return Tr.t("Жетоны узкоколейки ×%d") % count
+		"baits":
+			return Tr.t("Приманки ×%d") % count
 	return str(entry["item"])
 
 
@@ -253,7 +255,7 @@ static func build_rush(parent: VBoxContainer, state: ClickerState, journal: Jour
 static func rush_hint(quarry: Quarry) -> String:
 	var names := {"pick": "удар кирки", "layer": "ярус забоя", "dynamite": "динамит", "golden": "золотая глыба",
 			"boss": "хранитель", "expedition": "поход", "junk": "покупка у старьёвщика",
-			"cart": "бросок на узкоколейке", "research": "исследование"}
+			"cart": "бросок на узкоколейке", "research": "исследование", "tower": "этаж башни"}
 	var actions: Array = quarry.rush_theme()["actions"]
 	if actions.is_empty():
 		return Tr.t("Сегодня все действия дают очки ×%d.") % Quarry.RUSH_SUNDAY_FACTOR

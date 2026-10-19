@@ -137,6 +137,9 @@ func grant_ad_reward(placement: String) -> void:
 			if not state.workshop.hurry(Workshop.AD_HURRY):
 				return
 			_toast.call(Tr.t("Исследование ускорено на 30 минут"))
+		"tower":
+			state.tower.attempts += 1
+			_toast.call(Tr.t("Ещё одна попытка в башне"))
 		"tickets":
 			state.railway.tickets += Railway.AD_TICKETS
 			_toast.call(Tr.t("Жетоны узкоколейки +%d") % Railway.AD_TICKETS)
@@ -471,3 +474,78 @@ func on_pass_buy() -> void:
 			state.miner_pass.unlock_premium()
 			_toast.call(Tr.t("Золотой пропуск открыт до конца сезона"))
 			_after_pass_claim())
+
+
+# ---------- Питомцы и башня ----------
+
+func on_pet_summon(count: int) -> void:
+	var before := {}
+	for id in state.pets.copies:
+		before[id] = int(state.pets.copies[id])
+	var ids := state.pets.summon(count, state, true)
+	if ids.is_empty():
+		return
+	# «Новый!» — первая копия питомца, которого раньше не было (номер позиции в списке)
+	var new_ids := {}
+	for i in ids.size():
+		var id := str(ids[i])
+		if int(before[id]) == 0 and not new_ids.has(id):
+			new_ids[id] = i
+	state.apply_research()
+	state.save()
+	_sfx.play("claim", -4.0)
+	_settings.vibrate(30)
+	PetsView.show_summon(host, state, ids, new_ids)
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_pet_toggle(id: String) -> void:
+	if not state.pets.toggle(id):
+		if state.pets.owned(id):
+			_toast.call(Tr.t("Все слоты заняты: сначала уберите питомца"))
+		return
+	state.apply_research()              # «Крот Копуша» меняет время кирки
+	state.save()
+	_sfx.play("tick", -4.0)
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_tower_fight() -> void:
+	if not state.tower.can_fight():
+		return
+	_sfx.play("tick", -2.0)
+	var fight := TowerFight.new().setup(state, func(won: bool) -> void: _on_tower_done(won))
+	host.add_child(fight)
+
+
+func _on_tower_done(won: bool) -> void:
+	var result := state.tower.finish(won, state)
+	state.save()
+	var modal := Modal.new()
+	if won:
+		_sfx.play("claim", -2.0)
+		_settings.vibrate(60)
+		modal.body.add_child(UiTheme.make_label(Tr.t("Этаж %d пройден!") % int(result["floor"]), 48, UiTheme.BRASS, true))
+		var parts: Array[String] = [Tr.fmt("+%d алмазов", [int(result["diamonds"])]), Tr.t("Приманки: %d") % int(result["baits"])]
+		if result.has("golden"):
+			parts.append(Tr.t("Золотой сундук ×%d") % int(result["golden"]))
+		if result.has("points"):
+			parts.append(Tr.t("Очко навыков +1"))
+		var text := UiTheme.make_text(", ".join(parts), 30, UiTheme.TEXT)
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		modal.body.add_child(text)
+	else:
+		_sfx.play("tick", -6.0)
+		modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 48, UiTheme.TEXT, true))
+		var hint := UiTheme.make_text(Tr.t("Сильнее бьют питомцы (все собранные), исследования мастерской и глубина. Попыток осталось: %d") % state.tower.attempts_left(), 26, UiTheme.MUTE)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		modal.body.add_child(hint)
+	var close := UiTheme.make_button("Дальше", true, 32)
+	close.pressed.connect(modal.close)
+	modal.body.add_child(close)
+	host.add_child(modal)
+	_refresh.call()
+	_on_dynamite_changed.call()
+	_rebuild_journal.call()

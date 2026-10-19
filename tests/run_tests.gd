@@ -38,6 +38,7 @@ func _init() -> void:
 	_test_quarry()
 	_test_trips_workshop_railway()
 	_test_lucky_and_pass()
+	_test_pets_and_tower()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -989,6 +990,87 @@ func _test_lucky_and_pass() -> void:
 	broken.load_from_text(JSON.stringify({"lucky": {"chests": 99, "offer": [{"kind": "x"}]}, "pass": {"claimed_free": -5, "xp": "a"}, "luck_factor": 50, "luck_time": 9999}))
 	_check(broken.lucky.chests == Lucky.LUCKY_CAP and broken.lucky.offer.is_empty() and broken.miner_pass.claimed_free == 0, "broken chest and pass data sanitised")
 	_check(broken.luck_factor <= Lucky.FRENZY_FACTOR and broken.luck_time <= 600.0, "broken luck clamped")
+
+
+## «Подземные друзья» (призыв, звёзды, слоты, эффекты) и «Башня испытаний».
+func _test_pets_and_tower() -> void:
+	_set_noon()
+	var s := ClickerState.new()
+	_check(s.pets.kinds() == 0 and s.pets.summon_level() == 1 and s.pets.free_available(), "no pets, level 1 summon, free pull ready")
+	var one := s.pets.summon(1, s, true)
+	_check(one.size() == 1 and s.diamonds == 0 and not s.pets.free_available(), "daily free summon costs nothing")
+	_check(s.pets.summon(1, s, true).is_empty(), "no diamonds, no second summon")
+	s.diamonds = 1000
+	var ten := s.pets.summon(10, s, true)
+	_check(ten.size() == 10 and s.diamonds == 1000 - Pets.PULL10_COST, "ten summons cost 90")
+	s.pets.baits = 3
+	var gems := s.diamonds
+	s.pets.summon(1, s)
+	_check(s.pets.baits == 2 and s.diamonds == gems, "baits pay before diamonds")
+	_check(s.pets.pulls == 12 and s.pets.kinds() >= 1, "pulls counted")
+	var p := Pets.new()
+	p.copies["mole"] = 1
+	_check(p.stars("mole") == 1 and p.copies_to_next("mole") == 2, "first copy gives one star")
+	p.copies["mole"] = 31
+	_check(p.stars("mole") == 5 and p.copies_to_next("mole") == 0, "31 copies give five stars")
+	p.pulls = 750
+	_check(p.summon_level() == 6 and p.pulls_to_next_level() == 0, "summon level 6 at 750 pulls")
+	var counts := [0, 0, 0, 0]
+	var luck := Pets.new()
+	for i in 2000:
+		luck.pulls = 0                                 # уровень призыва 1 всё время
+		var id := luck.roll_one()
+		counts[int(Pets.data(id)["rarity"])] += 1
+	_check(counts[0] > counts[1] and counts[3] == 0, "low summon level: common most, no legendary")
+	# слоты и эффекты
+	var e := ClickerState.new()
+	e.levels["rain"] = 5
+	var income := e.income_per_second()
+	e.pets.copies["bat"] = 7                        # 3 звезды: +9%
+	_check(e.pets.toggle("bat") and absf(e.income_per_second() / income - 1.09) < 0.001, "bat in a slot adds income")
+	_check(not e.pets.toggle("dragon"), "pet not owned cannot be equipped")
+	e.pets.copies["mole"] = 31
+	e.pets.toggle("mole")
+	e.apply_research()
+	_check(is_equal_approx(e.quarry.pick_seconds, Quarry.PICK_SECONDS * 0.85), "mole makes pickaxes faster")
+	e.pets.copies["rat"] = 1
+	e.pets.copies["owl"] = 1
+	_check(e.pets.toggle("rat") and not e.pets.toggle("owl"), "only three slots")
+	_check(e.pets.toggle("bat") and absf(e.income_per_second() - income) < income * 0.001, "removing a pet removes its effect")
+	var eb := ClickerState.new()
+	eb.load_from_text(e.serialize())
+	_check(eb.pets.stars("mole") == 5 and eb.pets.equipped.has("mole") and is_equal_approx(eb.quarry.pick_seconds, Quarry.PICK_SECONDS * 0.85), "pets persisted and applied")
+	var junk := ClickerState.new()
+	junk.load_from_text(JSON.stringify({"pets": {"copies": {"mole": -3, "x": 5}, "equipped": ["dragon", "x"], "baits": "q"}}))
+	_check(junk.pets.kinds() == 0 and junk.pets.equipped.is_empty() and junk.pets.baits == 0, "broken pets data sanitised")
+
+	# --- башня ---
+	var t := ClickerState.new()
+	_check(t.tower.next_floor == 1 and t.tower.attempts_left() == Tower.ATTEMPTS, "tower starts at floor 1 with three attempts")
+	_check(Tower.hp_for(5) > Tower.hp_for(6) and Tower.is_boss(5), "guardian floor is the hardest of its five")
+	_check(Tower.hp_for(1) / Tower.tap_damage(t) <= 40.0, "first floor takes about thirty taps at start")
+	var lose := t.tower.finish(false, t)
+	_check(not bool(lose["won"]) and t.tower.attempts_left() == Tower.ATTEMPTS - 1 and t.tower.next_floor == 1, "defeat spends an attempt")
+	var gems_t := t.diamonds
+	var win := t.tower.finish(true, t)
+	_check(bool(win["won"]) and t.tower.next_floor == 2 and t.tower.best == 1 and t.diamonds > gems_t and t.pets.baits == 1, "victory climbs and pays")
+	_check(t.tower.attempts_left() == Tower.ATTEMPTS - 1, "victory does not spend an attempt")
+	t.tower.next_floor = 5
+	var boss := t.tower.finish(true, t)
+	_check(int(boss["golden"]) == 1 and t.lucky.golden == 1 and int(boss["baits"]) == 3, "guardian floor gives a golden chest")
+	t.tower.next_floor = 25
+	_check(t.tower.finish(true, t).has("points"), "floor 25 gives a skill point")
+	var power_before := Tower.tap_damage(t)
+	t.pets.copies["dragon"] = 3
+	_check(Tower.tap_damage(t) > power_before + 20.0, "pets make the tower tap stronger")
+	t.tower.attempts = 0
+	_check(not t.tower.can_fight(), "no attempts, no fight")
+	ClickerState.clock_offset += 86400.0
+	_check(t.tower.attempts_left() == Tower.ATTEMPTS, "attempts refill the next day")
+	var tb := ClickerState.new()
+	tb.load_from_text(t.serialize())
+	_check(tb.tower.next_floor == t.tower.next_floor and tb.tower.best == t.tower.best, "tower persisted")
+	_set_noon()
 
 
 var _quiet_fail := {}
