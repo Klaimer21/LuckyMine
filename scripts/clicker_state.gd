@@ -350,6 +350,13 @@ func income_per_second() -> float:
 	return base_income_per_second() * (1.0 + blaster_share())
 
 
+## Доход для разовых наград и цен (сундуки, походы, мастерская…): без временных «Золотой лихорадки» и карты сундука,
+## иначе награду, взятую под ускорением, можно раздуть в разы, а цена исследования скачет.
+func reward_income_per_second() -> float:
+	var temporary := (boost_factor if boost_time > 0.0 else 1.0) * (luck_factor if luck_time > 0.0 else 1.0)
+	return income_per_second() / maxf(temporary, 0.01)
+
+
 func cost(key: String) -> float:
 	var info: Dictionary = UPGRADES[key]
 	if not upgrade_unlocked(key) or upgrade_maxed(key):
@@ -754,7 +761,7 @@ func claim_daily() -> Dictionary:
 	var reward: Dictionary = Retention.DAILY[slot]
 	var result := {"slot": slot}
 	if reward.has("coins"):
-		var coins_reward := maxf(100.0, income_per_second() * float(reward["coins"]))
+		var coins_reward := maxf(100.0, reward_income_per_second() * float(reward["coins"]))
 		add_coins(coins_reward)
 		result["coins"] = coins_reward
 	if reward.has("diamonds"):
@@ -924,7 +931,7 @@ func claim_expedition(slot := -1) -> Dictionary:
 	var data: Dictionary = Retention.EXPEDITIONS[int(trip["type"])]
 	var rarity: Dictionary = Retention.RARITIES[int(trip["rarity"])]
 	var bonus := expedition_bonus() * float(rarity["loot"])
-	var coins_reward := maxf(100.0, income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
+	var coins_reward := maxf(100.0, reward_income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
 	add_coins(coins_reward)
 	var diamonds_reward := int(round(float(data["diamonds"]) * bonus)) + int(rarity.get("diamonds", 0))
 	diamonds += diamonds_reward
@@ -1484,6 +1491,7 @@ func _apply_save(data: Dictionary) -> float:
 	if lab_period > 0.0:
 		offline_lab_diamonds = mini(floori((away + lab_progress) / lab_period), Machines.LAB_OFFLINE_CAP + int(SHIFT_LAB_CAP[skill_level("shift")]))
 		diamonds += offline_lab_diamonds
+		lab_progress = fposmod(away + lab_progress, lab_period)      # засчитанный офлайн задел не идёт второй раз
 	update_upgrade_unlocks()
 	var dynamo := dynamo_period()
 	if dynamo > 0.0:

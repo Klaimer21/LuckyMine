@@ -192,7 +192,7 @@ func dig(i: int, s: ClickerState) -> Dictionary:
 
 ## Монеты клетки на текущем ярусе.
 func coins_for(seconds: float, s: ClickerState) -> float:
-	return maxf(100.0, s.income_per_second() * seconds) * (1.0 + LAYER_STEP * (layer - 1))
+	return maxf(100.0, s.reward_income_per_second() * seconds) * (1.0 + LAYER_STEP * (layer - 1))
 
 
 ## Выдаёт содержимое клетки (или сундука) и возвращает, что выдано.
@@ -247,7 +247,7 @@ func descend(s: ClickerState) -> Dictionary:
 
 func junk_refresh_if_new_day() -> void:
 	var day := ClickerState.today()
-	if day != junk_day:
+	if day > junk_day:                     # только вперёд: откат часов не обновляет лавку
 		junk_day = day
 		junk_refreshes = 0
 		_roll_junk()
@@ -338,7 +338,7 @@ func junk_buy(slot: int, s: ClickerState) -> Dictionary:
 			s.finds[ore] = int(s.finds[ore]) + count
 			result["ore"] = ore
 		"coins":
-			var amount := maxf(100.0, s.income_per_second() * 3600.0 * count)
+			var amount := maxf(100.0, s.reward_income_per_second() * 3600.0 * count)
 			s.add_coins(amount)
 			result["coins"] = amount
 		"rush":
@@ -363,7 +363,7 @@ static func weekday() -> int:
 
 func _rush_roll_day() -> void:
 	var day := ClickerState.today()
-	if day != rush_day:
+	if day > rush_day:                     # только вперёд: откат часов не обнуляет наряд
 		rush_day = day
 		rush_points = 0
 		rush_claimed = 0
@@ -430,7 +430,7 @@ func rush_claim(step: int, s: ClickerState) -> Dictionary:
 		_:
 			picks += 10
 			s.diamonds += 5 + 2 * zone
-			var amount := maxf(100.0, s.income_per_second() * 3600.0)
+			var amount := maxf(100.0, s.reward_income_per_second() * 3600.0)
 			s.add_coins(amount)
 			result["picks"] = 10
 			result["diamonds"] = 5 + 2 * zone

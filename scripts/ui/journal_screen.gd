@@ -58,6 +58,7 @@ var _updaters: Array = []           # таймеры вкладки «Поход
 var _trip_signature := ""           # что готово во вкладке «Походы»: изменилось — перестроить
 var _fade_next := false             # следующая перерисовка — смена вкладки: короткое проявление
 var _tick := 0.0
+var _ad_tick := 0.0
 
 
 func setup(p_state: ClickerState) -> void:
@@ -244,8 +245,31 @@ func _build_relics() -> void:
 		texts.add_child(UiTheme.make_label("×%d" % count if count > 0 else Tr.t("не найдена"), 28, UiTheme.BRASS if count > 0 else UiTheme.MUTE))
 
 
+## Кнопка рекламы с паузой: пока журнал открыт, отсчёт на ней идёт, а по готовности она включается сама (на любой вкладке).
+static func track_ad(button: Button, placement: String, ready_text: String) -> void:
+	button.set_meta("ad_placement", placement)
+	button.set_meta("ad_text", ready_text)
+	button.add_to_group("ad_cooldown")
+
+
+func _update_ad_buttons() -> void:
+	for node in get_tree().get_nodes_in_group("ad_cooldown"):
+		var button := node as Button
+		if button == null or not button.is_visible_in_tree():
+			continue
+		var wait := state.ad_remaining(str(button.get_meta("ad_placement")))
+		button.disabled = wait > 0.0
+		button.text = str(button.get_meta("ad_text")) if wait <= 0.0 else _format_time(wait)
+
+
 func _process(delta: float) -> void:
-	if not visible or (_tab != 2 and _tab != 6):
+	if not visible:
+		return
+	_ad_tick += delta
+	if _ad_tick >= 1.0:
+		_ad_tick = 0.0
+		_update_ad_buttons()
+	if _tab != 2 and _tab != 6:
 		return
 	_tick += delta
 	if _tick < 0.5:
@@ -640,6 +664,7 @@ func _ad_card(placement: String, title: String, detail: String) -> void:
 	row.add_child(texts)
 	var wait := state.ad_remaining(placement)
 	var go := UiTheme.make_key(Tr.t("Смотреть") if wait <= 0.0 else _format_time(wait), 30, "felt")
+	JournalScreen.track_ad(go, placement, Tr.t("Смотреть"))
 	go.custom_minimum_size = Vector2(190, 84)
 	go.disabled = wait > 0.0
 	go.pressed.connect(func() -> void:

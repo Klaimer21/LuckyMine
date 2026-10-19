@@ -133,7 +133,7 @@ func summon(count: int, s: ClickerState, free := false) -> Array:
 		paid -= 1
 	var from_baits := mini(baits, paid)
 	paid -= from_baits
-	var cost := PULL10_COST if count == 10 and paid == 10 else PULL_COST * paid
+	var cost := ceili(PULL10_COST * paid / 10.0) if count == 10 else PULL_COST * paid      # скидка ×10 сохраняется и с бесплатным призывом и приманками
 	if s.diamonds < cost:
 		return []
 	s.diamonds -= cost

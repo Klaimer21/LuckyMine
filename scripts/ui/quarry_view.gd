@@ -64,6 +64,7 @@ static func build_dig(parent: VBoxContainer, state: ClickerState, journal: Journ
 	parent.add_child(ad_row)
 	var wait := state.ad_remaining("picks")
 	var ad := UiTheme.make_key(Tr.t("Кирки +%d (реклама)") % Quarry.AD_PICKS if wait <= 0.0 else JournalScreen._format_time(wait), 28, "felt")
+	JournalScreen.track_ad(ad, "picks", Tr.t("Кирки +%d (реклама)") % Quarry.AD_PICKS)
 	ad.custom_minimum_size.y = 84
 	ad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ad.disabled = wait > 0.0
@@ -181,6 +182,7 @@ static func build_junk(parent: VBoxContainer, state: ClickerState, journal: Jour
 	row2.add_child(reroll)
 	var wait := state.ad_remaining("junk")
 	var ad := UiTheme.make_key(Tr.t("Реклама") if wait <= 0.0 else JournalScreen._format_time(wait), 26, "felt")
+	JournalScreen.track_ad(ad, "junk", Tr.t("Реклама"))
 	ad.custom_minimum_size = Vector2(220, 84)
 	ad.disabled = wait > 0.0
 	ad.pressed.connect(func() -> void: journal.ad_requested.emit("junk"))
@@ -257,7 +259,8 @@ static func build_rush(parent: VBoxContainer, state: ClickerState, journal: Jour
 static func rush_hint(quarry: Quarry) -> String:
 	var names := {"pick": "удар кирки", "layer": "ярус забоя", "dynamite": "динамит", "golden": "золотая глыба",
 			"boss": "хранитель", "expedition": "поход", "junk": "покупка у старьёвщика",
-			"cart": "бросок на узкоколейке", "research": "исследование", "tower": "этаж башни"}
+			"cart": "бросок на узкоколейке", "research": "исследование", "tower": "этаж башни",
+			"chest": "сундук удачи", "summon": "призыв питомца", "dungeon": "подземелье"}
 	var actions: Array = quarry.rush_theme()["actions"]
 	if actions.is_empty():
 		return Tr.t("Сегодня все действия дают очки ×%d.") % Quarry.RUSH_SUNDAY_FACTOR

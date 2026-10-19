@@ -77,7 +77,7 @@ func grant(cell: String, s: ClickerState, factor: float) -> Dictionary:
 	var result := {}
 	match cell:
 		"coins_s", "coins_m", "coins_l":
-			var amount := maxf(100.0, s.income_per_second() * float(COINS_SECONDS[cell])) * factor
+			var amount := maxf(100.0, s.reward_income_per_second() * float(COINS_SECONDS[cell])) * factor
 			s.add_coins(amount)
 			result["coins"] = amount
 		"gems":
@@ -97,7 +97,7 @@ func grant(cell: String, s: ClickerState, factor: float) -> Dictionary:
 		"dynamite":
 			result["dynamite"] = s.add_dynamite(int(round(1 * factor)))
 		"chest":
-			var amount := maxf(100.0, s.income_per_second() * float(COINS_SECONDS["chest"])) * factor
+			var amount := maxf(100.0, s.reward_income_per_second() * float(COINS_SECONDS["chest"])) * factor
 			s.add_coins(amount)
 			var gems := int(round((3 + zone) * factor))
 			s.diamonds += gems

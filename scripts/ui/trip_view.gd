@@ -51,6 +51,7 @@ static func build(parent: VBoxContainer, state: ClickerState, journal: JournalSc
 	reroll_row.add_child(reroll)
 	var wait := state.ad_remaining("trip_offers")
 	var ad_offers := UiTheme.make_key(Tr.t("Реклама") if wait <= 0.0 else JournalScreen._format_time(wait), 24, "felt")
+	JournalScreen.track_ad(ad_offers, "trip_offers", Tr.t("Реклама"))
 	ad_offers.custom_minimum_size = Vector2(200, 80)
 	ad_offers.disabled = wait > 0.0
 	ad_offers.pressed.connect(func() -> void: journal.ad_requested.emit("trip_offers"))
@@ -198,7 +199,7 @@ static func loot_text(state: ClickerState, type: int, rarity: int) -> String:
 	var data: Dictionary = Retention.EXPEDITIONS[type]
 	var info: Dictionary = Retention.RARITIES[rarity]
 	var bonus := state.expedition_bonus() * float(info["loot"])
-	var coins := maxf(100.0, state.income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
+	var coins := maxf(100.0, state.reward_income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
 	var gems := int(round(float(data["diamonds"]) * bonus)) + int(info["diamonds"])
 	return Tr.fmt("≈%s монет · %d алмазов · %d находок", [NumberFormat.short(coins), gems, int(round(float(data["finds"]) * bonus))]) \
 			+ " · " + Tr.fmt("%d жетонов", [int(info["tickets"])])
@@ -256,6 +257,7 @@ static func _build_workshop(parent: VBoxContainer, state: ClickerState, journal:
 			row.add_child(finish)
 			var wait := state.ad_remaining("research")
 			var ad := UiTheme.make_key(Tr.t("−30 мин (реклама)") if wait <= 0.0 else JournalScreen._format_time(wait), 24, "felt")
+			JournalScreen.track_ad(ad, "research", Tr.t("−30 мин (реклама)"))
 			ad.custom_minimum_size = Vector2(260, 80)
 			ad.disabled = wait > 0.0
 			ad.pressed.connect(func() -> void: journal.ad_requested.emit("research"))

@@ -47,7 +47,7 @@ static func build(parent: VBoxContainer, state: ClickerState, journal: JournalSc
 		buttons.add_child(free)
 	for count in [1, 10]:
 		var paid := maxi(0, count - pets.baits - (1 if pets.free_available() else 0))
-		var cost := Pets.PULL10_COST if count == 10 and paid == 10 else Pets.PULL_COST * paid
+		var cost := ceili(Pets.PULL10_COST * paid / 10.0) if count == 10 else Pets.PULL_COST * paid      # скидка ×10 сохраняется и с бесплатным призывом и приманками
 		var label := Tr.t("Призыв ×%d") % count + ("  · %d" % cost if cost > 0 else "")
 		var key := UiTheme.make_key(label, 24, "brass")
 		key.custom_minimum_size = Vector2(0, 88)

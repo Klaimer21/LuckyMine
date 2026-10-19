@@ -63,7 +63,7 @@ func _process(_delta: float) -> bool:
 
 func _act() -> void:
 	var state: ClickerState = _main.state
-	match _rng.randi_range(0, 35):
+	match _rng.randi_range(0, 41):
 		0, 1, 2, 3, 4, 5, 6, 7:
 			var list: Array = []
 			_buttons(root, list)
@@ -170,6 +170,73 @@ func _act() -> void:
 					state.machines[id] = _rng.randi_range(0, state.machine_max_level(id))
 			_main._machines.refresh()
 			_main._refresh()
+		36, 37:
+			# журнал на случайной вкладке и в случайном режиме (забой, узкоколейка, башня, подземелья, пропуск, артефакты)
+			var journal: JournalScreen = _main._journal
+			journal._tab = _rng.randi_range(0, 7)
+			journal._dig_mode = _rng.randi_range(0, 3)
+			journal._rewards_mode = _rng.randi_range(0, 1)
+			journal._friends_mode = _rng.randi_range(0, 1)
+			journal._fade_next = _rng.randf() < 0.5
+			journal.open()
+		38:
+			# новые системы напрямую: забой, узкоколейка, сундук, пропуск, питомцы, мастерская, походы, лавка
+			var rewards: Rewards = _main._rewards
+			match _rng.randi_range(0, 11):
+				0:
+					rewards.on_quarry_dig(_rng.randi_range(-2, Quarry.COLS * Quarry.ROWS + 2))
+				1:
+					rewards.on_quarry_descend()
+				2:
+					state.railway.tickets += _rng.randi_range(0, 3)
+					rewards.on_cart_roll()
+				3:
+					state.lucky.chests = mini(Lucky.LUCKY_CAP, state.lucky.chests + 1)
+					rewards.open_lucky()
+				4:
+					rewards.on_lucky_take(_rng.randi_range(-1, 3))
+				5:
+					state.miner_pass.add_xp(_rng.randi_range(0, 2000))
+					rewards.on_pass_claim_all()
+				6:
+					rewards.on_pet_summon([1, 10][_rng.randi() % 2])
+				7:
+					rewards.on_pet_toggle(str(Pets.PETS[_rng.randi() % Pets.PETS.size()]["id"]))
+				8:
+					rewards.on_research_start(str(Workshop.RESEARCH[_rng.randi() % Workshop.RESEARCH.size()]["id"]))
+					rewards.on_research_claim()
+				9:
+					rewards.on_expedition_start(_rng.randi_range(-1, 3))
+					rewards.on_expedition_claim(_rng.randi_range(-1, 3))
+				10:
+					rewards.on_junk_buy(_rng.randi_range(-1, 4))
+					if _rng.randf() < 0.3:
+						rewards.on_junk_reroll()
+				11:
+					rewards.on_rush_claim(_rng.randi_range(-1, 3))
+					rewards.on_artifact_upgrade(str(Artifacts.LIST[_rng.randi() % Artifacts.LIST.size()]["id"]))
+		39:
+			# бой в башне или подземелье: начать (иногда дважды подряд), бить, взрывать или бросить на середине
+			var rewards_fight: Rewards = _main._rewards
+			if _rng.randf() < 0.5:
+				rewards_fight.on_tower_fight()
+			else:
+				rewards_fight.on_dungeon_fight(str(Dungeons.LIST[_rng.randi() % Dungeons.LIST.size()]["id"]))
+			if _rng.randf() < 0.3:
+				rewards_fight.on_tower_fight()
+			for fight in _main.find_children("*", "TowerFight", true, false):
+				for i in _rng.randi_range(0, 60):
+					fight._hit()
+				if _rng.randf() < 0.3:
+					fight._blast()
+		40:
+			_main._rewards.on_dungeon_sweep(str(Dungeons.LIST[_rng.randi() % Dungeons.LIST.size()]["id"]))
+			state.dungeons.add_keys(_rng.randi_range(0, 1))
+			state.tower.attempts += _rng.randi_range(0, 1)
+		41:
+			# реклама за награду по любому месту (в том числе новые): заглушка выдаёт награду
+			var placements: Array = Ads.PLACEMENTS.keys()
+			_main._rewards.on_ad_requested(str(placements[_rng.randi() % placements.size()]))
 		20, 21:
 			# прыжки системных часов: вперёд, назад, на годы; потом игра «просыпается» как после офлайна
 			var jumps := [60.0, 3600.0, 86400.0, -3600.0, -86400.0 * 3.0, 86400.0 * 365.0, -86400.0 * 365.0]
@@ -230,3 +297,34 @@ func _check() -> void:
 			modals += 1
 	if modals > 6:
 		_bug("modal pile: %d" % modals)
+	# новые системы: значения в своих границах
+	var q := s.quarry
+	if q.picks < 0 or q.hp.size() != Quarry.COLS * Quarry.ROWS or q.loot.count("exit") != 1 or q.layer < 1 or q.best_layer < q.layer:
+		_bug("quarry broken: picks %d, cells %d, exits %d, layer %d/%d" % [q.picks, q.hp.size(), q.loot.count("exit"), q.layer, q.best_layer])
+	if q.junk_slots.size() > Quarry.JUNK_SLOTS:
+		_bug("junk slots: %d" % q.junk_slots.size())
+	if s.lucky.chests < 0 or s.lucky.golden < 0 or (not s.lucky.offer.is_empty() and s.lucky.offer.size() != Lucky.CARDS):
+		_bug("lucky chest broken: %d %d offer %d" % [s.lucky.chests, s.lucky.golden, s.lucky.offer.size()])
+	if s.luck_factor < Lucky.CURSE_FACTOR - 0.001 or s.luck_factor > Lucky.FRENZY_FACTOR + 0.001 or s.luck_time < 0.0:
+		_bug("luck out of range: %s for %s" % [s.luck_factor, s.luck_time])
+	if s.pets.equipped.size() > Pets.SLOTS or s.pets.baits < 0:
+		_bug("pets broken: %d equipped, %d baits" % [s.pets.equipped.size(), s.pets.baits])
+	for id in s.pets.equipped:
+		if not s.pets.owned(str(id)):
+			_bug("pet equipped but not owned: %s" % id)
+	for id in s.artifacts.levels:
+		if int(s.artifacts.levels[id]) < 0 or int(s.artifacts.levels[id]) > Artifacts.MAX_LEVEL or int(s.artifacts.shards[id]) < 0:
+			_bug("artifact %s out of range" % id)
+	if s.tower.next_floor < 1 or s.tower.best >= s.tower.next_floor or s.tower.attempts < 0:
+		_bug("tower broken: next %d best %d attempts %d" % [s.tower.next_floor, s.tower.best, s.tower.attempts])
+	for id in s.dungeons.keys:
+		if int(s.dungeons.keys[id]) < 0:
+			_bug("dungeon keys negative: %s" % id)
+	if s.miner_pass.xp < 0 or s.workshop.remaining(ClickerState.now()) < 0.0:
+		_bug("pass/workshop broken")
+	var fights := 0
+	for node in _main.find_children("*", "TowerFight", true, false):
+		if not node.is_queued_for_deletion():
+			fights += 1
+	if fights > 1:
+		_bug("several fights at once: %d" % fights)

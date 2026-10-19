@@ -41,6 +41,7 @@ var _chest_button: Button               # «Сундук удачи» в шап�
 var _chest_shown := -1
 var _diamonds_shown := -1
 var _points_shown := false
+var _attention_wait := 0.0
 var _coins_label: Label
 var _coin_icon: Icon
 var _rate_label: Label
@@ -191,6 +192,7 @@ func _ready() -> void:
 					_journal.rebuild(),
 			func() -> void: _dynamite_shown = -1,
 			func() -> int: return _biome)
+	_rewards.close_journal = func() -> void: _journal.visible = false
 	_perf.setup(_ui, state, settings, _table, get_viewport(), func() -> void:
 			_say_hint("low_fps"))
 	_info.setup(_ui, state, settings, sfx, _show_toast, func() -> void: _tutorial.start(), func() -> void:
@@ -225,6 +227,7 @@ func _process(delta: float) -> void:
 	if chests != _chest_shown:
 		_chest_shown = chests
 		_chest_button.visible = chests > 0
+		_fit_coins()
 		(_chest_button.get_node("Count") as Label).text = "×%d" % chests if chests > 1 else ""
 		if chests > 0:
 			_chest_button.pivot_offset = Vector2(60, 60)
@@ -263,6 +266,21 @@ func _notification(what: int) -> void:
 		state.save()
 
 
+## Длинное число («115.08B») рядом с сундуком в шапку не влезает: шрифт счётчика уменьшается до ширины, что осталась.
+func _fit_coins() -> void:
+	var top := _coins_label.get_parent() as HBoxContainer
+	if top == null or _ui.size.x <= 0.0:
+		return
+	var room := _ui.size.x - 56.0
+	for child in top.get_children():
+		if child != _coins_label and (child as Control).visible:
+			room -= (child as Control).get_combined_minimum_size().x
+		room -= top.get_theme_constant("separation")
+	var font := _coins_label.get_theme_font("font")
+	var width := font.get_string_size(_coins_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 96).x + 12.0
+	_coins_label.add_theme_font_size_override("font_size", clampi(floori(96.0 * room / width), 48, 96))
+
+
 ## Счётчик плавно догоняет значение и «подпрыгивает» от приземлений; кнопки следят за доступностью.
 func _update_counter(delta: float) -> void:
 	_shown_coins += (state.coins - _shown_coins) * minf(1.0, delta * 9.0)
@@ -272,6 +290,7 @@ func _update_counter(delta: float) -> void:
 	if text != _shown_text:
 		_shown_text = text
 		_coins_label.text = text
+		_fit_coins()
 	_bump = maxf(0.0, _bump - delta * 3.0)
 	var zoom := 1.0 + 0.045 * _bump
 	_coins_label.pivot_offset = Vector2(0.0, _coins_label.size.y * 0.5)
@@ -469,7 +488,11 @@ func _update_abilities(delta: float) -> void:
 	if boosted != _boost_shown:
 		_boost_shown = boosted
 		_coins_label.add_theme_color_override("font_color", UiTheme.BRASS if boosted else UiTheme.TEXT)
-	var has_points := state.needs_attention()
+	_attention_wait -= delta
+	var has_points := _points_shown
+	if _attention_wait <= 0.0:              # needs_attention обходит все системы: хватит пару раз в секунду
+		_attention_wait = 0.5
+		has_points = state.needs_attention()
 	if has_points != _points_shown:
 		_points_shown = has_points
 		_journal_button.add_theme_color_override("font_color", UiTheme.BRASS if has_points else UiTheme.TEXT)
@@ -626,6 +649,10 @@ func _build_ui() -> void:
 	_hint_hiding = false
 	_auto_button = null
 	_sheet.rows.clear()
+	_chest_shown = -1                      # шапка строится заново: значки и цвета нужно выставить ещё раз
+	_boost_shown = state.boost_time <= 0.0
+	_points_shown = not state.needs_attention()
+	_attention_wait = 0.0
 
 	var tap_area := Control.new()
 	tap_area.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -642,7 +669,8 @@ func _build_ui() -> void:
 	_build_atmosphere()
 	_build_top()
 	_machines.build()
-	_table.fx_requested.connect(func(kind: String, pos: Vector2, pixel: float) -> void: _fx.play(kind, pos, pixel))
+	if not _table.fx_requested.is_connected(_on_fx_requested):      # интерфейс пересобирается (смена языка), поле — нет
+		_table.fx_requested.connect(_on_fx_requested)
 
 	_perf.build()
 	_toast = UiTheme.make_label("", 52, UiTheme.TEXT, true)
@@ -728,6 +756,10 @@ func _build_ui() -> void:
 	_fx.reduced = settings.reduce_motion
 	_apply_season()
 	_refresh()
+
+
+func _on_fx_requested(kind: String, pos: Vector2, pixel: float) -> void:
+	_fx.play(kind, pos, pixel)
 
 
 ## Атмосфера поверх фона: плывущая пыль цвета зоны и затемнение сверху, чтобы счётчик читался на любом фоне.
@@ -831,6 +863,7 @@ func _build_top() -> void:
 	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sub_margin.add_child(sub)
 	_rate_label = UiTheme.make_label("", 30, UiTheme.MUTE)
+	_rate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART      # длинная строка переносится, а не раздвигает шапку за экран
 	sub.add_child(_rate_label)
 	_message_label = UiTheme.make_label("", 28, UiTheme.BRASS)
 	sub.add_child(_message_label)
@@ -944,7 +977,9 @@ func _make_auto_button() -> void:
 func _refresh() -> void:
 	var rate_text := Tr.t("+%s в секунду") % NumberFormat.short(state.income_per_second())
 	if state.veins > 0:
-		rate_text += "  ·  " + Tr.t("Жилы %d (×%.1f)") % [state.veins, state.vein_multiplier()]
+		var vein_factor := state.vein_multiplier()
+		rate_text += "  ·  " + Tr.t("Жилы %s (×%s)") % [NumberFormat.short(state.veins),
+				("%.1f" % vein_factor) if vein_factor < 1000.0 else NumberFormat.short(vein_factor)]
 	_rate_label.text = rate_text
 	_throw_button.text = Tr.t("Обвал") + " ×%d" % state.rocks_per_throw()
 	_sheet.refresh()

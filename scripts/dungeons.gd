@@ -49,7 +49,7 @@ static func rule() -> Dictionary:
 
 func _roll_day() -> void:
 	var day := ClickerState.today()
-	if day != keys_day:
+	if day > keys_day:                     # только вперёд: откат часов не возвращает ключи
 		keys_day = day
 		for entry in LIST:
 			var id := str(entry["id"])
@@ -97,7 +97,7 @@ static func grant(id: String, level: int, s: ClickerState) -> Dictionary:
 	var reward := reward_for(id, level)
 	var result := {}
 	if reward.has("minutes"):
-		var amount := maxf(100.0, s.income_per_second() * 60.0 * int(reward["minutes"]))
+		var amount := maxf(100.0, s.reward_income_per_second() * 60.0 * int(reward["minutes"]))
 		s.add_coins(amount)
 		result["coins"] = amount
 	if reward.has("picks"):

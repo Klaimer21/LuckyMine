@@ -66,13 +66,20 @@ func _is_top() -> bool:
 	return parent != null and not _closing and parent.get_child(parent.get_child_count() - 1) == self
 
 
+static func _ignore_mouse(node: Node) -> void:
+	if node is Control:
+		(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for child in node.get_children():
+		_ignore_mouse(child)
+
+
 ## Закрытие: сигнал уходит сразу, окно плавно гаснет и удаляется.
 func close() -> void:
 	if _closing:
 		return
 	_closing = true
 	closed.emit()
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ignore_mouse(self)                   # пока окно гаснет, его кнопки уже не нажимаются (двойная награда, повторный бой)
 	if not is_inside_tree():
 		queue_free()
 		return

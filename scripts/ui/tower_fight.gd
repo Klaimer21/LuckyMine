@@ -19,6 +19,7 @@ var _dynamite: Button
 var _dynamite_share := Tower.DYNAMITE_SHARE
 var _crit_every := 0                      # каждое N-е касание бьёт втрое (правило «Трещины»; 0 — нет)
 var _taps := 0
+var _mouse_finger := -1                   # палец, который движок превращает в мышь (его касания приходят в кнопку сами)
 
 
 func setup(p_state: ClickerState, done: Callable) -> TowerFight:
@@ -101,6 +102,21 @@ func _process(delta: float) -> void:
 	_refresh()
 	if _time <= 0.0:
 		_end(false)
+
+
+## Второй и следующие пальцы движок в мышь не превращает: их касания по глыбе засчитываем здесь.
+func _input(event: InputEvent) -> void:
+	if not event is InputEventScreenTouch or _over:
+		return
+	if not event.pressed:
+		if event.index == _mouse_finger:
+			_mouse_finger = -1
+		return
+	if _mouse_finger == -1:
+		_mouse_finger = event.index
+		return
+	if _rock.get_global_rect().has_point(event.position):
+		_hit()
 
 
 func _refresh() -> void:

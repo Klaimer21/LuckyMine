@@ -16,6 +16,7 @@ var _refresh: Callable
 var _rebuild_journal: Callable
 var _on_dynamite_changed: Callable
 var _biome: Callable
+var close_journal: Callable           # закрыть журнал (чтобы увидеть вызванную на поле глыбу); ставит main.gd
 var _ads := Ads.new()
 var _store := Store.new()
 var _offline_doubled := false
@@ -48,6 +49,7 @@ func on_expedition_start(offer: int) -> void:
 	if state.start_offer(offer):
 		_sfx.play("tick", -4.0)
 		state.save()
+		_rebuild_journal.call()
 
 
 func on_expedition_claim(slot: int) -> void:
@@ -194,11 +196,13 @@ func on_shop_purchase(item: String) -> void:
 				_toast.call(Tr.t("Золотая глыба уже на поле"))
 				return
 			state.diamonds -= cost
+			_close_journal()
 		"boss":
 			if not _table.summon_boss(_biome.call()):
 				_toast.call(Tr.t("Хранитель уже на поле"))
 				return
 			state.diamonds -= cost
+			_close_journal()
 		"expedition_skip":
 			state.diamonds -= cost
 			state.expedition_hurry(INF)
@@ -236,6 +240,13 @@ func on_shop_purchase(item: String) -> void:
 	_sfx.play("coin", -5.0)
 	_settings.vibrate(20)
 	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func _close_journal() -> void:
+	if close_journal.is_valid():
+		close_journal.call()
 
 
 ## Выдаёт динамит на склад и сообщает об этом (сколько влезло).
@@ -416,7 +427,8 @@ func on_lucky_reroll() -> void:
 	if state.lucky.reroll(state):
 		state.save()
 		_sfx.play("tick", -4.0)
-	LuckyView.show(host, state, self)
+	if not state.lucky.offer.is_empty():
+		LuckyView.show(host, state, self)
 
 
 func on_pass_claim(track: String, level: int) -> void:
@@ -487,9 +499,18 @@ func on_pet_toggle(id: String) -> void:
 	_rebuild_journal.call()
 
 
+## Идёт ли уже бой (башня или подземелье): второй поверх первого не открываем.
+func _fight_open() -> bool:
+	for child in host.get_children():
+		if child is TowerFight and not child.is_queued_for_deletion():
+			return true
+	return false
+
+
 func on_tower_fight() -> void:
-	if not state.tower.can_fight():
+	if _fight_open() or not state.tower.begin():
 		return
+	state.save()                        # попытка списана сразу: выход из игры посреди боя её не вернёт
 	_sfx.play("tick", -2.0)
 	var fight := TowerFight.new().setup(state, func(won: bool) -> void: _on_tower_done(won))
 	host.add_child(fight)
@@ -538,7 +559,7 @@ func on_artifact_upgrade(id: String) -> void:
 
 
 func on_dungeon_fight(id: String) -> void:
-	if state.dungeons.keys_left(id) <= 0:
+	if _fight_open() or state.dungeons.keys_left(id) <= 0:
 		return
 	var level := state.dungeons.next_level(id)
 	var rule := Dungeons.rule()

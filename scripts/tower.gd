@@ -3,6 +3,7 @@ extends RefCounted
 ## «Башня испытаний»: этажи-глыбы, которые нужно разбить касаниями за FIGHT_SECONDS. Прочность растёт на 10% за этаж,
 ## каждый 5-й этаж — хранитель (×2.5 прочности, большая награда). Сила удара — от питомцев, исследований, зоны и планеты.
 ## Попыток три в день (UTC); победа попытку не тратит, поражение тратит. Реклама даёт ещё одну.
+## Попытка списывается в начале боя (begin) и возвращается при победе: закрыть игру посреди боя — значит проиграть.
 
 const BASE_HP := 150.0
 const HP_GROWTH := 1.1
@@ -16,6 +17,7 @@ var next_floor := 1
 var best := 0
 var attempts := ATTEMPTS
 var attempts_day := -1
+var _fighting := false                     # бой начат через begin (не сохраняется: прерванный бой — поражение)
 
 
 static func is_boss(floor_number: int) -> bool:
@@ -34,7 +36,7 @@ static func tap_damage(s: ClickerState) -> float:
 
 func _roll_day() -> void:
 	var day := ClickerState.today()
-	if day != attempts_day:
+	if day > attempts_day:                 # только вперёд: откат часов не возвращает попытки
 		attempts_day = day
 		attempts = maxi(attempts, ATTEMPTS)        # дополнительные попытки (реклама) сверх трёх не сгорают
 
@@ -48,12 +50,26 @@ func can_fight() -> bool:
 	return attempts_left() > 0
 
 
+## Начало боя: списывает попытку. false — попыток нет.
+func begin() -> bool:
+	if not can_fight():
+		return false
+	attempts -= 1
+	_fighting = true
+	return true
+
+
 ## Итог боя на этаже next_floor. Возвращает награду ({"won": false} при поражении).
 func finish(won: bool, s: ClickerState) -> Dictionary:
 	_roll_day()
+	var begun := _fighting
+	_fighting = false
 	if not won:
-		attempts = maxi(0, attempts - 1)
+		if not begun:
+			attempts = maxi(0, attempts - 1)
 		return {"won": false, "floor": next_floor}
+	if begun:
+		attempts += 1                              # победа попытку не тратит
 	var floor_number := next_floor
 	var result := reward(floor_number, s)
 	next_floor += 1

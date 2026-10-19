@@ -128,6 +128,7 @@ func _build_center(side: float) -> void:
 	box.add_child(_roll_button)
 	var wait := state.ad_remaining("tickets")
 	var ad := UiTheme.make_key(Tr.t("Жетоны +%d (реклама)") % Railway.AD_TICKETS if wait <= 0.0 else JournalScreen._format_time(wait), 22, "felt")
+	JournalScreen.track_ad(ad, "tickets", Tr.t("Жетоны +%d (реклама)") % Railway.AD_TICKETS)
 	ad.custom_minimum_size = Vector2(inner.size.x * 0.8, 72)
 	ad.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	ad.disabled = wait > 0.0

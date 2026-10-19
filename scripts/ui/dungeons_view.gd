@@ -75,6 +75,7 @@ static func build(parent: VBoxContainer, state: ClickerState, journal: JournalSc
 		row.add_child(sweep)
 	var wait := state.ad_remaining("dungeon")
 	var ad := UiTheme.make_key(Tr.t("+1 ключ в каждое (реклама)") if wait <= 0.0 else JournalScreen._format_time(wait), 24, "felt")
+	JournalScreen.track_ad(ad, "dungeon", Tr.t("+1 ключ в каждое (реклама)"))
 	ad.custom_minimum_size.y = 84
 	ad.disabled = wait > 0.0
 	ad.pressed.connect(func() -> void: journal.ad_requested.emit("dungeon"))

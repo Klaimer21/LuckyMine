@@ -41,7 +41,7 @@ static func season_left() -> float:
 
 func _roll_season() -> void:
 	var now_season := current_season()
-	if now_season != season:
+	if now_season > season:                # только вперёд: откат часов не сжигает купленный пропуск
 		season = now_season
 		xp = 0
 		premium = false
@@ -145,7 +145,7 @@ static func grant(reward_data: Dictionary, s: ClickerState) -> Dictionary:
 				s.quarry.picks += value
 				result["picks"] = value
 			"coins":
-				var amount := maxf(100.0, s.income_per_second() * 60.0 * value)
+				var amount := maxf(100.0, s.reward_income_per_second() * 60.0 * value)
 				s.add_coins(amount)
 				result["coins"] = amount
 			"tokens":

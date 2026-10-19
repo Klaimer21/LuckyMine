@@ -41,6 +41,7 @@ func request(placement: String, on_reward: Callable) -> void:
 	if not PLACEMENTS.has(placement) or _busy:
 		return
 	if state.ads_removed:
+		state.ad_mark(placement)                 # пауза между наградами та же, иначе без рекламы награда бесконечна
 		on_reward.call()
 		return
 	_busy = true

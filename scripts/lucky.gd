@@ -128,7 +128,7 @@ func take(index: int, s: ClickerState) -> Dictionary:
 	var result := {"kind": str(card["kind"]), "rarity": int(card["rarity"])}
 	match str(card["kind"]):
 		"coins":
-			var amount := maxf(100.0, s.income_per_second() * 60.0 * value)
+			var amount := maxf(100.0, s.reward_income_per_second() * 60.0 * value)
 			s.add_coins(amount)
 			result["coins"] = amount
 		"gems":
@@ -146,7 +146,7 @@ func take(index: int, s: ClickerState) -> Dictionary:
 			s.start_luck(FRENZY_FACTOR, float(value))
 			result["seconds"] = value
 		"gamble":
-			var amount := maxf(100.0, s.income_per_second() * 60.0 * value)
+			var amount := maxf(100.0, s.reward_income_per_second() * 60.0 * value)
 			s.add_coins(amount)          # доход до проклятия: награда честная, штраф потом
 			s.start_luck(CURSE_FACTOR, CURSE_SECONDS[int(card["rarity"])])
 			result["coins"] = amount
@@ -166,8 +166,8 @@ func to_dict() -> Dictionary:
 
 
 func from_dict(data: Dictionary) -> void:
-	chests = ClickerState._count(data.get("chests"), 0, LUCKY_CAP)
-	golden = ClickerState._count(data.get("golden"), 0, 100)
+	chests = ClickerState._count(data.get("chests"), 0, 1000)      # наградами пропуска можно скопить больше LUCKY_CAP
+	golden = ClickerState._count(data.get("golden"), 0, 1000)
 	progress = clampf(ClickerState._num(data.get("progress"), 0.0), 0.0, LUCKY_SECONDS)
 	offer_golden = bool(data.get("offer_golden", false))
 	rerolled = bool(data.get("rerolled", false))

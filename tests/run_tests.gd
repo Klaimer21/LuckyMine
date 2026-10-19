@@ -40,6 +40,7 @@ func _init() -> void:
 	_test_lucky_and_pass()
 	_test_pets_and_tower()
 	_test_artifacts_and_dungeons()
+	_test_bug_fixes()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -989,7 +990,7 @@ func _test_lucky_and_pass() -> void:
 	_check(MinerPass.season_left() > 0.0 and MinerPass.season_left() <= 86400.0 * MinerPass.SEASON_DAYS, "season time left in range")
 	var broken := ClickerState.new()
 	broken.load_from_text(JSON.stringify({"lucky": {"chests": 99, "offer": [{"kind": "x"}]}, "pass": {"claimed_free": -5, "xp": "a"}, "luck_factor": 50, "luck_time": 9999}))
-	_check(broken.lucky.chests == Lucky.LUCKY_CAP and broken.lucky.offer.is_empty() and broken.miner_pass.claimed_free == 0, "broken chest and pass data sanitised")
+	_check(broken.lucky.chests == 99 and broken.lucky.offer.is_empty() and broken.miner_pass.claimed_free == 0, "broken chest and pass data sanitised")
 	_check(broken.luck_factor <= Lucky.FRENZY_FACTOR and broken.luck_time <= 600.0, "broken luck clamped")
 
 
@@ -1151,6 +1152,57 @@ var _quiet_fail := {}
 
 
 ## Проверка в цикле: одна строка в отчёте на имя, а не сотни.
+## Исправления после ревью: откат часов, разовые награды без ускорений, попытка башни, ×10 питомцев, лаборатория офлайн.
+func _test_bug_fixes() -> void:
+	_set_noon()
+	var s := ClickerState.new()
+	s.diamonds = 1000
+	_check(s.tower.begin() and s.tower.attempts_left() == Tower.ATTEMPTS - 1, "tower attempt spent at fight start")
+	var killed := ClickerState.new()
+	killed.load_from_text(s.serialize())
+	_check(killed.tower.attempts_left() == Tower.ATTEMPTS - 1, "closing the game mid-fight keeps the attempt spent")
+	s.tower.finish(true, s)
+	_check(s.tower.attempts_left() == Tower.ATTEMPTS, "win refunds the attempt")
+	s.tower.begin()
+	s.tower.finish(false, s)
+	_check(s.tower.attempts_left() == Tower.ATTEMPTS - 1, "loss costs exactly one attempt")
+	s.miner_pass.unlock_premium()
+	s.miner_pass.add_xp(500)
+	s.quarry.note("pick", 10)
+	var rush_before := s.quarry.rush_now_points()
+	ClickerState.clock_offset -= 86400.0 * 40.0
+	_check(s.miner_pass.has_premium() and s.miner_pass.current_xp() >= 500, "clock rollback keeps the bought pass")
+	_check(s.tower.attempts_left() == Tower.ATTEMPTS - 1, "clock rollback does not refill tower attempts")
+	_check(s.quarry.rush_now_points() == rush_before, "clock rollback does not reset the daily rush")
+	_set_noon()
+	var rich := ClickerState.new()
+	rich.levels["rain"] = 5
+	var reward_rate := rich.reward_income_per_second()
+	rich.start_rush(60.0)
+	rich.start_luck(Lucky.FRENZY_FACTOR, 60.0)
+	_check(rich.income_per_second() > reward_rate * 2.0 and is_equal_approx(rich.reward_income_per_second(), reward_rate), "lump rewards ignore temporary boosts")
+	var pets := ClickerState.new()
+	pets.diamonds = 1000
+	pets.pets.baits = 1
+	pets.pets.free_day = ClickerState.today()
+	pets.pets.summon(10, pets)
+	_check(pets.diamonds == 1000 - ceili(Pets.PULL10_COST * 9 / 10.0) and pets.pets.baits == 0, "x10 discount kept when a bait is used")
+	var lab := ClickerState.new()
+	lab.machines["lab"] = 1
+	var wrapper: Dictionary = JSON.parse_string(lab.serialize())
+	var data: Dictionary = JSON.parse_string(str(wrapper["payload"]))
+	data["lab_progress"] = 500.0
+	data["last_seen"] = ClickerState.now() - 1000.0
+	var back := ClickerState.new()
+	back.load_from_text(JSON.stringify(data))
+	_check(back.offline_lab_diamonds == 2 and absf(back.lab_progress - 350.0) < 1.0, "offline lab time is not counted twice")
+	var big := ClickerState.new()
+	big.lucky.chests = 40
+	var big_back := ClickerState.new()
+	big_back.load_from_text(big.serialize())
+	_check(big_back.lucky.chests == 40, "pass chests above the cap survive a reload")
+
+
 func _check_quiet(condition: bool, name: String) -> void:
 	if not condition:
 		_quiet_fail[name] = true

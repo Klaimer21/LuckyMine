@@ -50,7 +50,7 @@ func seconds_for(id: String) -> float:
 
 
 func cost_for(id: String, s: ClickerState) -> float:
-	return maxf(MIN_COST, s.income_per_second() * BASE_COST_SECONDS * pow(2.0, level(id)))
+	return maxf(MIN_COST, s.reward_income_per_second() * BASE_COST_SECONDS * pow(2.0, level(id)))
 
 
 func busy() -> bool:
