@@ -37,5 +37,6 @@ const ACHIEVEMENTS := [
 	{"id": "rocks100k", "name": "Горный комбайн", "text": "Разбить 100 000 камней", "kind": "rocks", "goal": 100000, "reward": {"diamonds": 10, "points": 3}},
 	{"id": "meta5", "name": "Старый колонист", "text": "Купить 5 уровней мета-улучшений", "kind": "meta", "goal": 5, "reward": {"diamonds": 10, "points": 2}},
 	{"id": "relics4", "name": "Коллекционер", "text": "Собрать все четыре диковинки из экспедиций", "kind": "relics", "goal": 4, "reward": {"diamonds": 3, "points": 1}},
+	{"id": "quarry10", "name": "Глубокий забой", "text": "Спуститься в забое на 10-й ярус", "kind": "quarry", "goal": 10, "reward": {"diamonds": 5, "points": 1}},
 	{"id": "set1", "name": "Полный набор", "text": "Довести все руды до уровня 1", "kind": "set", "goal": 1, "reward": {"diamonds": 3}},
 ]

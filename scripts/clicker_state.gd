@@ -147,6 +147,7 @@ var boost_factor := BOOST_FACTOR
 var mini_cooldown := 0.0
 var skill_points_bought := 0         # купленные за алмазы очки навыков (цена растёт)
 var styles_bought: Array = []        # индексы пород, купленных за алмазы
+var quarry := Quarry.new()           # «Забой», «Старьёвщик», «Наряд дня» (quarry.gd)
 var rush_ready_at := 0.0            # unix-время, когда лихорадку за алмазы можно купить снова
 var boost_time := 0.0             # «Золотая лихорадка»: сколько секунд осталось (не сохраняется)
 
@@ -466,6 +467,7 @@ func use_dynamite() -> bool:
 		return false
 	dynamite_stock -= 1
 	dynamite_used += 1
+	quarry.note("dynamite")
 	return true
 
 
@@ -642,6 +644,8 @@ func achievement_value(achievement: Dictionary) -> float:
 			return float(full_set_level())
 		"relics":
 			return float(relic_kinds())
+		"quarry":
+			return float(quarry.best_layer)
 	return 0.0
 
 
@@ -792,6 +796,7 @@ func claim_expedition() -> Dictionary:
 		found[ore] = int(found[ore]) + 1
 	expedition_type = -1
 	expedition_end = 0.0
+	quarry.note("expedition")
 	var relic := ""
 	if rng.randf() < relic_chance():
 		relic = str(RELICS[rng.randi() % RELICS.size()])
@@ -810,7 +815,7 @@ func relic_kinds() -> int:
 
 ## Есть что забрать или потратить: журнал в шапке подсвечивается.
 func needs_attention() -> bool:
-	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready()
+	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready() or quarry.rush_any_claimable()
 
 
 ## Подсказка показывается один раз: возвращает true, если это первый раз (и запоминает).
@@ -1095,7 +1100,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1266,6 +1271,8 @@ func _apply_save(data: Dictionary) -> float:
 		if Machines.ids().has(str(id)):
 			machines_unlocked[str(id)] = true
 	dynamite_zone_best = _count(data.get("dynamite_zone_best"), Biomes.index_for(total_earned, planet_scale()), 1000)
+	quarry.from_dict(_as_dict(data.get("quarry")))
+	quarry.tick_picks(now())
 	update_machine_unlocks()
 	var gone := maxf(0.0, now() - _num(data.get("last_seen"), 0.0))
 	var away := minf(gone, offline_cap_seconds())

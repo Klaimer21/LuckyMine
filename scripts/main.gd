@@ -100,6 +100,7 @@ func _ready() -> void:
 			_hit_stop(0.07)
 			state.start_rush(ClickerState.BOOST_SECONDS, false)
 			state.golden_caught += 1
+			state.quarry.note("golden")
 			if state.golden_caught % 3 == 0:
 				_rewards.award_dynamite(1)
 			_say_hint("first_rush")
@@ -543,6 +544,7 @@ func _on_boss_defeated(zone: int) -> void:
 	var gems := int(round((2 + zone) * state.boss_reward_factor()))
 	state.diamonds += gems
 	state.bosses_defeated += 1
+	state.quarry.note("boss")
 	_rewards.award_dynamite(2)
 	state.save()
 	_show_toast(Tr.fmt("Хранитель побеждён! +%d алмазов", [gems]))
@@ -663,6 +665,11 @@ func _build_ui() -> void:
 	_journal.achievement_claim.connect(_rewards.on_achievement_claim)
 	_journal.achievement_claim_all.connect(_rewards.on_achievement_claim_all)
 	_journal.ad_requested.connect(_rewards.on_ad_requested)
+	_journal.quarry_dig.connect(_rewards.on_quarry_dig)
+	_journal.quarry_descend.connect(_rewards.on_quarry_descend)
+	_journal.junk_buy.connect(_rewards.on_junk_buy)
+	_journal.junk_reroll.connect(_rewards.on_junk_reroll)
+	_journal.rush_claim.connect(_rewards.on_rush_claim)
 	_settings_screen = SettingsScreen.new()
 	_ui.add_child(_settings_screen)
 	_settings_screen.setup(settings, _table, state)

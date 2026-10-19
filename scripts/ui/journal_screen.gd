@@ -14,6 +14,11 @@ signal achievement_claim_all
 signal ad_requested(placement: String)
 signal meta_purchase(id: String)
 signal planet_requested
+signal quarry_dig(index: int)
+signal quarry_descend
+signal junk_buy(slot: int)
+signal junk_reroll
+signal rush_claim(step: int)
 
 const ORE_NAMES := {1: "Медь", 2: "Железо", 3: "Золото", 4: "Алмаз"}
 ## Пиксельные значки предметов: магазин и реклама (по ключу покупки), достижения (по виду счётчика), экспедиции.
@@ -24,6 +29,7 @@ const SHOP_ICONS := {
 const ACHIEVEMENT_ICONS := {
 	"zone": "px_map", "prestige": "px_hourglass", "gold": "px_bag", "diamond": "gem", "golden": "px_crown", "dynamite": "px_bomb",
 	"boss": "px_shield", "planet": "px_rocket", "rocks": "px_hammer", "meta": "px_key", "set": "px_trophy",
+	"quarry": "px_pickaxe",
 }
 const TRIP_ICONS := ["trip_scout", "trip_descent", "trip_deep"]
 const ORE_ICONS := {1: "ore_copper", 2: "ore_iron", 3: "ore_gold", 4: "ore_diamond"}
@@ -32,9 +38,10 @@ const ORE_COLORS := {1: Color(0.78, 0.47, 0.30), 2: Color(0.50, 0.58, 0.68), 3: 
 
 var state: ClickerState
 var _content: VBoxContainer
-var _tab := 0                       # 0 — руда, 1 — навыки, 2 — походы, 3 — награды
+var _tab := 0                       # 0 — руда, 1 — навыки, 2 — походы, 3 — награды, 4 — планета, 5 — лавка, 6 — забой
 var _expedition_label: Label
 var _expedition_bar: ProgressBar
+var _pick_timer: Label
 var _was_ready := false
 var _fade_next := false             # следующая перерисовка — смена вкладки: короткое проявление
 var _tick := 0.0
@@ -88,8 +95,8 @@ func rebuild() -> void:
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 8)
 	_content.add_child(tabs)
-	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка
-	var tab_list := [[0, "Руда"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [3, "Награды"], [4, "Планета"]]
+	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка, 6 забой
+	var tab_list := [[0, "Руда"], [6, "Забой"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [3, "Награды"], [4, "Планета"]]
 	for entry in tab_list:
 		var id: int = entry[0]
 		var tab_button := UiTheme.make_key(str(entry[1]), 21, "felt" if id == _tab else "dark")
@@ -107,6 +114,10 @@ func rebuild() -> void:
 		tabs.add_child(tab_button)
 	_expedition_label = null
 	_expedition_bar = null
+	_pick_timer = null
+	if _tab == 6:
+		_pick_timer = QuarryView.build_dig(_content, state, self)
+		return
 	if _tab == 1:
 		_build_skills()
 		return
@@ -144,6 +155,9 @@ func _build_shop() -> void:
 	_ad_card("dynamite", Tr.t("Динамит ×2"), "за короткую рекламу")
 	if state.machine_unlocked("crusher") or state.machine_unlocked("blaster"):
 		_ad_card("machines", Tr.t("Машины ×2"), "Дробилка и Подрывник вдвое быстрее на 5 минут")
+
+	_section("Старьёвщик")
+	QuarryView.build_junk(_content, state, self)
 
 	_section("Лавка алмазов")
 	_shop_card("rush", "Золотая лихорадка", "×7 к добыче на 5 минут")
@@ -206,12 +220,19 @@ func _build_relics() -> void:
 
 
 func _process(delta: float) -> void:
-	if not visible or _tab != 2:
+	if not visible or (_tab != 2 and _tab != 6):
 		return
 	_tick += delta
 	if _tick < 0.5:
 		return
 	_tick = 0.0
+	if _tab == 6:
+		if _pick_timer != null:
+			var before := state.quarry.picks
+			QuarryView.update_timer(_pick_timer, state)
+			if state.quarry.picks != before:
+				rebuild()
+		return
 	var finished := state.expedition_ready()
 	if finished != _was_ready:
 		rebuild()
@@ -327,6 +348,7 @@ func _build_expeditions() -> void:
 
 ## Вкладка «Награды»: достижения со шкалой и наградой; косметика (породы) открывается ими.
 func _build_achievements() -> void:
+	QuarryView.build_rush(_content, state, self)
 	var waiting := state.claimable_achievements()
 	if waiting > 1:
 		var all := UiTheme.make_key(Tr.t("Забрать всё") + " (%d)" % waiting, 32, "brass")

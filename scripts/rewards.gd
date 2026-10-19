@@ -124,6 +124,12 @@ func grant_ad_reward(placement: String) -> void:
 				return
 			state.expedition_end -= 3600.0
 			_toast.call(Tr.t("Поход ускорен на 1 час"))
+		"picks":
+			state.quarry.picks += Quarry.AD_PICKS
+			_toast.call(Tr.t("Кирки +%d") % Quarry.AD_PICKS)
+		"junk":
+			state.quarry.junk_reroll(state, false)
+			_toast.call(Tr.t("Старьёвщик принёс новый товар"))
 	_sfx.play("claim", -4.0)
 	_settings.vibrate(30)
 	state.save()
@@ -238,3 +244,92 @@ func award_dynamite(amount: int) -> void:
 	else:
 		_toast.call(Tr.t("Склад динамита полон"))
 	_on_dynamite_changed.call()
+
+
+# ---------- Забой, старьёвщик, наряд дня (quarry.gd) ----------
+
+func on_quarry_dig(index: int) -> void:
+	var result := state.quarry.dig(index, state)
+	if result.is_empty():
+		return
+	if not bool(result["opened"]):
+		_sfx.crack(false)
+		_settings.vibrate(10)
+	else:
+		_sfx.crack(true)
+		_settings.vibrate(25)
+		var text := _quarry_loot_text(result)
+		if text != "":
+			_sfx.play("coin", -6.0)
+			_toast.call(text)
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_quarry_descend() -> void:
+	var result := state.quarry.descend(state)
+	if result.is_empty():
+		return
+	_sfx.play("claim", -4.0)
+	_settings.vibrate(30)
+	var text := Tr.t("Ярус %d") % int(result["layer"])
+	if result.has("kind"):
+		text += " · " + Tr.t("Сундук!") + " " + _quarry_loot_text(result)
+	_toast.call(text)
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+## Текст добычи клетки или сундука: «Монеты: +…», «Алмазы: +…» и т.д.
+func _quarry_loot_text(result: Dictionary) -> String:
+	var parts: Array[String] = []
+	if result.has("coins"):
+		parts.append(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])))
+	if result.has("diamonds"):
+		parts.append(Tr.t("Алмазы: +%d") % int(result["diamonds"]))
+	if result.has("count") and result.has("ore"):
+		parts.append(Tr.t("Находки: +%d") % int(result["count"]))
+	if int(result.get("dynamite", 0)) > 0:
+		parts.append(Tr.t("Динамит +%d") % int(result["dynamite"]))
+		_on_dynamite_changed.call()
+	if result.has("picks"):
+		parts.append(Tr.t("Кирки +%d") % int(result["picks"]))
+	if str(result.get("kind", "")) == "exit":
+		parts.append(Tr.t("Лаз на ярус ниже!"))
+	return ", ".join(parts)
+
+
+func on_junk_buy(slot: int) -> void:
+	var result := state.quarry.junk_buy(slot, state)
+	if result.is_empty():
+		return
+	_sfx.play("coin", -5.0)
+	_settings.vibrate(20)
+	if str(result["item"]) == "dynamite":
+		_on_dynamite_changed.call()
+	_toast.call(Tr.t("Куплено у старьёвщика"))
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_junk_reroll() -> void:
+	if not state.quarry.junk_reroll(state):
+		return
+	_sfx.play("tick", -4.0)
+	state.save()
+	_rebuild_journal.call()
+
+
+func on_rush_claim(step: int) -> void:
+	var result := state.quarry.rush_claim(step, state)
+	if result.is_empty():
+		return
+	_sfx.play("claim", -4.0)
+	_settings.vibrate(30)
+	_toast.call(Tr.t("Сундук наряда") + ": " + _quarry_loot_text(result))
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()

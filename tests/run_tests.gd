@@ -35,6 +35,7 @@ func _init() -> void:
 	_test_hints()
 	_test_plurals()
 	_test_time()
+	_test_quarry()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -668,6 +669,102 @@ func _test_time() -> void:
 	ClickerState.clock_offset += 101.0
 	_check(timers.rush_remaining() == 0.0, "diamond rush cooldown ends")
 	ClickerState.clock_offset = 0.0
+
+
+## «Забой», «Старьёвщик», «Наряд дня» (quarry.gd).
+func _test_quarry() -> void:
+	var state := ClickerState.new()
+	var q := state.quarry
+	_check(q.picks == Quarry.START_PICKS, "quarry starts with picks")
+	_check(q.hp.size() == Quarry.COLS * Quarry.ROWS and q.loot.count("exit") == 1, "layer has one exit")
+	var exit_index := q.loot.find("exit")
+	_check(floori(exit_index / float(Quarry.COLS)) >= Quarry.ROWS / 2.0, "exit lies in the lower half")
+	_check(q.can_dig(0) and not q.can_dig(Quarry.COLS * 2), "only the top row is diggable at first")
+	# кирки копятся по времени, не выше склада и не от отката часов
+	var t0 := 1.0e9
+	q.picks = 0
+	q.pick_clock = t0
+	q.tick_picks(t0 + Quarry.PICK_SECONDS * 3.5)
+	_check(q.picks == 3, "three picks after 35 minutes")
+	q.tick_picks(t0 + Quarry.PICK_SECONDS * 1000.0)
+	_check(q.picks == Quarry.PICK_CAP, "picks capped")
+	q.picks = 0
+	q.pick_clock = t0
+	q.tick_picks(t0 - 5000.0)
+	_check(q.picks == 0, "clock rollback gives no picks")
+	# удар: открыть клетку верхнего ряда и проверить, что открылись соседи снизу
+	q.picks = 50
+	q.pick_clock = ClickerState.now()
+	q.hp[0] = 2
+	q.loot[0] = "diamonds"
+	var gems := state.diamonds
+	var first := q.dig(0, state)
+	_check(not first.is_empty() and not bool(first["opened"]), "hard rock needs a second hit")
+	var second := q.dig(0, state)
+	_check(bool(second["opened"]) and state.diamonds > gems, "opened cell pays diamonds")
+	_check(q.dig(0, state).is_empty(), "opened cell cannot be dug again")
+	_check(q.can_dig(Quarry.COLS), "cell below an opened one is diggable")
+	_check(q.picks == 48, "each hit costs a pick")
+	q.picks = 0
+	_check(q.dig(1, state).is_empty(), "no picks, no digging")
+	# сквозняк и спуск
+	q.picks = 500
+	_check(q.descend(state).is_empty(), "cannot descend before the exit is open")
+	for i in q.hp.size():
+		if str(q.loot[i]) != "exit":
+			continue
+		var col := i % Quarry.COLS
+		for row in Quarry.ROWS:
+			var cell := q.index(col, row)
+			while not q.is_open(cell):
+				q.dig(cell, state)
+			if row < Quarry.ROWS - 1 and q.loot[q.index(col, row + 1)] == "exit" and not q.is_open(q.index(col, row + 1)):
+				_check(q.draft_at(cell), "draft next to the exit")
+		break
+	_check(q.exit_open(), "exit opened by digging down")
+	var layer := q.layer
+	var down := q.descend(state)
+	_check(not down.is_empty() and q.layer == layer + 1 and q.best_layer == q.layer, "descend to the next layer")
+	_check(q.loot.count("exit") == 1 and not q.is_open(0), "fresh layer after descending")
+	# старьёвщик: один и тот же набор в течение дня, покупка один раз
+	var shop := ClickerState.new()
+	shop.quarry.junk_refresh_if_new_day()
+	var copy := ClickerState.new()
+	copy.quarry.junk_refresh_if_new_day()
+	_check(shop.quarry.junk_slots.size() == Quarry.JUNK_SLOTS, "junk dealer has four goods")
+	_check(str(shop.quarry.junk_slots) == str(copy.quarry.junk_slots), "junk goods depend only on the day")
+	shop.diamonds = 1000
+	var slot := -1
+	for i in shop.quarry.junk_slots.size():
+		if str(shop.quarry.junk_slots[i]["item"]) != "dynamite":
+			slot = i
+	var price := shop.quarry.junk_price(slot, shop)
+	_check(price <= shop.quarry.junk_full_price(slot, shop), "junk price is discounted")
+	_check(not shop.quarry.junk_buy(slot, shop).is_empty() and shop.diamonds == 1000 - price, "junk purchase charges diamonds")
+	_check(shop.quarry.junk_buy(slot, shop).is_empty(), "each junk good sells once")
+	var refresh := shop.quarry.junk_refresh_cost(shop)
+	_check(shop.quarry.junk_reroll(shop) and shop.quarry.junk_refresh_cost(shop) > refresh, "rerolling gets pricier")
+	# наряд дня
+	var rush := ClickerState.new()
+	rush.quarry.note("boss", 3)
+	_check(rush.quarry.rush_now_points() >= 60, "guardians earn rush points")
+	_check(rush.quarry.rush_claimable(0) and not rush.quarry.rush_claimable(2), "first rush chest ready")
+	var picks_before := rush.quarry.picks
+	_check(not rush.quarry.rush_claim(0, rush).is_empty() and rush.quarry.picks == picks_before + 5, "rush chest gives picks")
+	_check(rush.quarry.rush_claim(0, rush).is_empty(), "rush chest claimed once")
+	_check(Quarry.weekday() >= 0 and Quarry.weekday() < 7, "weekday in range")
+	var dyn := ClickerState.new()
+	var points := dyn.quarry.rush_now_points()
+	dyn.use_dynamite()
+	_check(dyn.quarry.rush_now_points() > points, "dynamite counts for the daily task")
+	# сохранение и защита от мусора
+	var saved := ClickerState.new()
+	saved.load_from_text(state.serialize())
+	_check(saved.quarry.layer == q.layer and str(saved.quarry.hp) == str(q.hp) and str(saved.quarry.loot) == str(q.loot), "quarry persisted")
+	var junk := ClickerState.new()
+	junk.quarry.from_dict({"picks": "x", "hp": [1, 2], "loot": ["exit"], "layer": -4, "junk_slots": [{"item": "gold bars"}]})
+	_check(junk.quarry.picks == Quarry.START_PICKS and junk.quarry.layer == 1 and junk.quarry.hp.size() == Quarry.COLS * Quarry.ROWS, "broken quarry data falls back")
+	_check(junk.quarry.junk_day == -1, "broken junk goods are rerolled")
 
 
 func _test_save_load() -> void:
