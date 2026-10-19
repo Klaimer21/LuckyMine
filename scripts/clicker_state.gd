@@ -1565,9 +1565,7 @@ static func import_save_text(text: String) -> bool:
 static func import_code(code: String) -> bool:
 	if code.length() > MAX_SAVE_BYTES * 2:
 		return false
-	code = code.strip_edges().replace("
-", "").replace("
-", "").replace(" ", "")
+	code = code.strip_edges().replace("\n", "").replace("\r", "").replace(" ", "")
 	if not code.begins_with(CODE_PREFIX):
 		return false
 	var outer = JSON.parse_string(Marshalls.base64_to_utf8(code.substr(CODE_PREFIX.length())))
