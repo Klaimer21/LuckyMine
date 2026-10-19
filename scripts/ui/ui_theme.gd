@@ -22,14 +22,18 @@ const ENEMY_INK := Color(0.753, 0.333, 0.247)
 const DARK_ON_BRASS := Color(0.10, 0.08, 0.03)
 
 ## Шрифты (один набор на все языки, кроме китайского: Russo One и Fira Sans Condensed содержат латиницу и кириллицу).
-const PIXEL_DISPLAY := "PixelifySans-Display.ttf"      # Pixelify Sans (OFL), вес 700. В кириллице добавлены О и П, а цифра 5 перерисована (в оригинале похожа на S)
-const PIXEL_BODY := "PixelifySans-Body.ttf"            # он же, вес 550
+## Galmuri11 (OFL, quiple): пиксельный шрифт с полной нормальной кириллицей, обрезан до латиницы, кириллицы и знаков.
+## Заголовки — он же, утолщённый (FontVariation). Прежний Pixelify Sans путал регистр в кириллице.
+const PIXEL_DISPLAY := "Galmuri11.ttf"
+const PIXEL_BODY := "Galmuri11.ttf"
+const DISPLAY_EMBOLDEN := 0.55
 const DISPLAY_FONT := "RussoOne-Regular.ttf"
 const BODY_FONT := "FiraSansCondensed-SemiBold.ttf"
 const PIXEL_UI := true                                  # пиксельный шрифт вместо Russo One и Fira Sans
 
 
 static var _system_font: SystemFont
+static var _bold_cache: Dictionary = {}                 # файл -> утолщённый вариант для заголовков
 
 
 ## Системный шрифт с поддержкой кириллицы и китайского (шрифты ОС подбираются сами).
@@ -70,6 +74,13 @@ static func font(file_name: String, display := false) -> Font:
 		var loaded := load(path) as FontFile
 		if loaded != null and loaded.fallbacks.is_empty():
 			loaded.fallbacks = [system_font()]
+		if loaded != null and display and file_name == PIXEL_DISPLAY and PIXEL_DISPLAY == PIXEL_BODY:
+			if not _bold_cache.has(file_name):
+				var bold := FontVariation.new()
+				bold.base_font = loaded
+				bold.variation_embolden = DISPLAY_EMBOLDEN
+				_bold_cache[file_name] = bold
+			return _bold_cache[file_name]
 		return loaded
 	return null
 
