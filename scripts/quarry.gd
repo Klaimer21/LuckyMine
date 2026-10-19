@@ -36,7 +36,7 @@ const JUNK_SLOTS := 4
 const JUNK_DISCOUNTS := [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
 
 ## Наряд дня: очки за действие; тема дня (понедельник = 0) утраивает очки своих действий, воскресенье удваивает все.
-const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15}
+const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15, "chest": 8}
 const RUSH_THEMES := [
 	{"name": "День кирки", "actions": ["pick", "layer"]},
 	{"name": "День подрывника", "actions": ["dynamite"]},
@@ -67,6 +67,7 @@ var junk_refreshes := 0                  # обновлений в этот де
 var rush_day := -1
 var rush_points := 0
 var rush_claimed := 0                    # битовая маска полученных сундуков
+var on_points: Callable                  # те же очки идут в опыт «Пропуска шахтёра» (подключает ClickerState)
 
 var _rng := RandomNumberGenerator.new()
 
@@ -374,7 +375,10 @@ func rush_factor(action: String) -> int:
 ## Действие засчитано: очки наряда (с множителем темы дня).
 func note(action: String, times := 1) -> void:
 	_rush_roll_day()
-	rush_points += int(RUSH_POINTS.get(action, 0)) * rush_factor(action) * times
+	var points := int(RUSH_POINTS.get(action, 0)) * rush_factor(action) * times
+	rush_points += points
+	if on_points.is_valid():
+		on_points.call(points)
 
 
 func rush_now_points() -> int:

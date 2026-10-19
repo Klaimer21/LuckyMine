@@ -22,6 +22,9 @@ signal rush_claim(step: int)
 signal research_start(id: String)
 signal research_claim
 signal cart_roll
+signal pass_claim(track: String, level: int)
+signal pass_claim_all
+signal pass_buy
 
 const ORE_NAMES := {1: "Медь", 2: "Железо", 3: "Золото", 4: "Алмаз"}
 ## Пиксельные значки предметов: магазин и реклама (по ключу покупки), достижения (по виду счётчика), экспедиции.
@@ -42,6 +45,7 @@ var state: ClickerState
 var _content: VBoxContainer
 var _tab := 0                       # 0 — руда, 1 — навыки, 2 — походы, 3 — награды, 4 — планета, 5 — лавка, 6 — забой
 var _pick_timer: Label
+var _rewards_mode := 0              # вкладка «Награды»: 0 — наряд и достижения, 1 — пропуск шахтёра
 var _dig_mode := 0                  # вкладка «Забой»: 0 — поле глыб, 1 — узкоколейка
 var _updaters: Array = []           # таймеры вкладки «Походы» (обновляются без перестройки)
 var _trip_signature := ""           # что готово во вкладке «Походы»: изменилось — перестроить
@@ -290,6 +294,23 @@ static func _format_time(seconds: float) -> String:
 
 ## Вкладка «Награды»: достижения со шкалой и наградой; косметика (породы) открывается ими.
 func _build_achievements() -> void:
+	var modes := HBoxContainer.new()
+	modes.add_theme_constant_override("separation", 8)
+	_content.add_child(modes)
+	var pass_waiting := state.miner_pass.claimable_count()
+	var names := [Tr.t("Задания"), Tr.t("Пропуск шахтёра") + ("  %d" % pass_waiting if pass_waiting > 0 else "")]
+	for mode in names.size():
+		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _rewards_mode else "dark")
+		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		key.custom_minimum_size.y = 84
+		key.pressed.connect(func() -> void:
+				_rewards_mode = mode
+				_fade_next = true
+				rebuild())
+		modes.add_child(key)
+	if _rewards_mode == 1:
+		PassView.build(_content, state, self)
+		return
 	QuarryView.build_rush(_content, state, self)
 	var waiting := state.claimable_achievements()
 	if waiting > 1:

@@ -66,7 +66,23 @@ func _screens(language: String) -> void:
 		_main._journal.open()
 		await _wait(0.4)
 		await _check(language, "журнал, вкладка %d" % tab)
+	for extra in [[3, "_rewards_mode", "пропуск шахтёра"], [6, "_dig_mode", "узкоколейка"]]:
+		_main._journal._tab = int(extra[0])
+		_main._journal.set(str(extra[1]), 1)
+		_main._journal.open()
+		await _wait(0.4)
+		await _check(language, "журнал, " + str(extra[2]))
+		_main._journal.set(str(extra[1]), 0)
 	_main._journal.visible = false
+	state.lucky.chests = 1
+	_main._rewards.open_lucky()
+	await _wait(0.6)
+	await _check(language, "сундук удачи")
+	for child in _main._ui.get_children():
+		if child is Modal:
+			child.queue_free()
+	state.lucky.offer = []
+	await _wait(0.2)
 	_main._settings_screen.open()
 	await _wait(0.4)
 	await _check(language, "настройки")

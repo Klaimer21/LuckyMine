@@ -37,6 +37,8 @@ var _tutorial: Tutorial
 var _hint_card: HintCard
 var _peek: CompanionPeek
 var _journal_button: Button
+var _chest_button: Button               # «Сундук удачи» в шапке: виден, когда есть что открыть
+var _chest_shown := -1
 var _diamonds_shown := -1
 var _points_shown := false
 var _coins_label: Label
@@ -216,6 +218,19 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	state.play_seconds += delta
+	if state.lucky.tick(delta):
+		_show_toast(Tr.t("Сундук удачи! Он в шапке, справа от монет."))
+		sfx.play("claim", -6.0)
+	var chests := state.lucky.available()
+	if chests != _chest_shown:
+		_chest_shown = chests
+		_chest_button.visible = chests > 0
+		(_chest_button.get_node("Count") as Label).text = "×%d" % chests if chests > 1 else ""
+		if chests > 0:
+			_chest_button.pivot_offset = Vector2(60, 60)
+			var pop := _chest_button.create_tween()
+			pop.tween_property(_chest_button, "scale", Vector2(1.2, 1.2), 0.12)
+			pop.tween_property(_chest_button, "scale", Vector2.ONE, 0.18)
 	# монеты за разбитые глыбы копятся пачкой за кадр
 	if _earned_batch > 0.0:
 		state.add_coins(_earned_batch)
@@ -437,7 +452,12 @@ func _update_abilities(delta: float) -> void:
 		sfx.play("claim", -9.0)
 	var boosted := state.boost_time > 0.0
 	var machine_boosted := state.machine_boost_time > 0.0
-	_boost_label.visible = boosted or machine_boosted
+	var lucky_on := state.luck_time > 0.0
+	_boost_label.visible = boosted or machine_boosted or lucky_on
+	if not boosted and not machine_boosted and lucky_on:
+		var luck_left := int(ceilf(state.luck_time))
+		var luck_clock := "%d:%02d" % [floori(luck_left / 60.0), luck_left % 60]
+		_boost_label.text = (Tr.t("Удачная смена ×2 · %s") if state.luck_factor > 1.0 else Tr.t("Проклятое золото ×0.5 · %s")) % luck_clock
 	if not boosted and machine_boosted:
 		var machine_left := int(ceilf(state.machine_boost_time))
 		_boost_label.text = Tr.t("Машины ×2 · %s") % ("%d:%02d" % [floori(machine_left / 60.0), machine_left % 60])
@@ -674,6 +694,9 @@ func _build_ui() -> void:
 	_journal.research_start.connect(_rewards.on_research_start)
 	_journal.research_claim.connect(_rewards.on_research_claim)
 	_journal.cart_roll.connect(_rewards.on_cart_roll)
+	_journal.pass_claim.connect(_rewards.on_pass_claim)
+	_journal.pass_claim_all.connect(_rewards.on_pass_claim_all)
+	_journal.pass_buy.connect(_rewards.on_pass_buy)
 	_settings_screen = SettingsScreen.new()
 	_ui.add_child(_settings_screen)
 	_settings_screen.setup(settings, _table, state)
@@ -778,6 +801,15 @@ func _build_top() -> void:
 	_journal_button.pressed.connect(func() -> void:
 			_journal.open()
 			_say_hint("journal_first"))
+	_chest_button = UiTheme.icon_button("chest", Color.WHITE, 72, Vector2(120, 120))
+	_chest_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_chest_button.visible = false
+	_chest_button.pressed.connect(func() -> void: _rewards.open_lucky())
+	var chest_count := UiTheme.make_label("", 26, UiTheme.BRASS, true)
+	chest_count.name = "Count"
+	chest_count.position = Vector2(80, 76)
+	_chest_button.add_child(chest_count)
+	top.add_child(_chest_button)
 	top.add_child(_journal_button)
 	var gear := UiTheme.icon_button("gear", UiTheme.MUTE, 60, Vector2(120, 120))
 	gear.size_flags_vertical = Control.SIZE_SHRINK_BEGIN

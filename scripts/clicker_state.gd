@@ -151,8 +151,16 @@ var styles_bought: Array = []        # индексы пород, купленн
 var quarry := Quarry.new()           # «Забой», «Старьёвщик», «Наряд дня» (quarry.gd)
 var workshop := Workshop.new()       # «Мастерская»: исследования за монеты и время (workshop.gd)
 var railway := Railway.new()         # «Узкоколейка»: поле-кольцо с кубиком и жетонами (railway.gd)
+var lucky := Lucky.new()             # «Сундук удачи»: три карты на выбор (lucky.gd)
+var miner_pass := MinerPass.new()    # «Пропуск шахтёра»: сезон с бесплатной и золотой дорожками (miner_pass.gd)
+var luck_time := 0.0                 # действие карты сундука: «Удачная смена» (×2) или проклятие (×0.5), секунд осталось
+var luck_factor := 1.0
 var rush_ready_at := 0.0            # unix-время, когда лихорадку за алмазы можно купить снова
 var boost_time := 0.0             # «Золотая лихорадка»: сколько секунд осталось (не сохраняется)
+
+
+func _init() -> void:
+	quarry.on_points = miner_pass.add_xp
 
 
 ## Сколько глыб падает в секунду сами.
@@ -270,7 +278,7 @@ func max_face() -> int:
 
 ## Множитель добычи: улучшение «Добыча», бонус зоны и «Золотая лихорадка» (×7 после касания золотой глыбы).
 func multiplier() -> float:
-	return workshop.income_factor() * pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0)
+	return workshop.income_factor() * pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0) * (luck_factor if luck_time > 0.0 else 1.0)
 
 
 ## Шанс критического обвала и удвоения (улучшения «Критический обвал» и «Двойной улов»).
@@ -949,7 +957,8 @@ func relic_kinds() -> int:
 
 ## Есть что забрать или потратить: журнал в шапке подсвечивается.
 func needs_attention() -> bool:
-	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready() or quarry.rush_any_claimable() or workshop.ready(now())
+	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready() or quarry.rush_any_claimable() or workshop.ready(now()) \
+			or miner_pass.claimable_count() > 0
 
 
 ## Подсказка показывается один раз: возвращает true, если это первый раз (и запоминает).
@@ -1120,7 +1129,15 @@ func collect_find(ore: int) -> void:
 
 
 ## Тик бустов: убывает время; когда малый запал закончился, включается пауза до следующего.
+## Карта сундука удачи: множитель дохода на время (новая карта заменяет прежнюю).
+func start_luck(factor: float, seconds: float) -> void:
+	luck_factor = factor
+	luck_time = seconds
+
+
 func tick_boost(delta: float) -> void:
+	if luck_time > 0.0:
+		luck_time = maxf(0.0, luck_time - delta)
 	if boost_time > 0.0:
 		boost_time = maxf(0.0, boost_time - delta)
 		if boost_time <= 0.0 and boost_factor < BOOST_FACTOR:
@@ -1241,7 +1258,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expeditions": expeditions, "expedition_offers": expedition_offers, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "workshop": workshop.to_dict(), "railway": railway.to_dict(), "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expeditions": expeditions, "expedition_offers": expedition_offers, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "workshop": workshop.to_dict(), "railway": railway.to_dict(), "lucky": lucky.to_dict(), "pass": miner_pass.to_dict(), "luck_time": luck_time, "luck_factor": luck_factor, "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1437,6 +1454,9 @@ func _apply_save(data: Dictionary) -> float:
 	quarry.from_dict(_as_dict(data.get("quarry")))
 	workshop.from_dict(_as_dict(data.get("workshop")))
 	railway.from_dict(_as_dict(data.get("railway")))
+	lucky.from_dict(_as_dict(data.get("lucky")))
+	miner_pass.from_dict(_as_dict(data.get("pass")))
+	luck_time = 0.0                       # офлайн-доход считается без карты сундука (её время ниже)
 	apply_research()
 	quarry.tick_picks(now())
 	update_machine_unlocks()
@@ -1457,6 +1477,8 @@ func _apply_save(data: Dictionary) -> float:
 	offline_capped = gone > offline_cap_seconds()
 	var earned := income_per_second() * away * float(SHIFT_INCOME[skill_level("shift")]) * (1.0 + 0.01 * machine_level("solar"))
 	add_coins(earned)
+	luck_factor = clampf(_num(data.get("luck_factor"), 1.0), Lucky.CURSE_FACTOR, Lucky.FRENZY_FACTOR)
+	luck_time = clampf(_num(data.get("luck_time"), 0.0) - gone, 0.0, 600.0)
 	return earned
 
 
@@ -1551,6 +1573,8 @@ static func import_code(code: String) -> bool:
 	# покупки не переезжают с кодом: «убрать рекламу» восстанавливается через магазин (подпись ставим заново)
 	var data: Dictionary = JSON.parse_string(parsed["payload"])
 	data["ads_removed"] = false
+	if typeof(data.get("pass")) == TYPE_DICTIONARY:
+		data["pass"]["premium"] = false          # золотой пропуск — покупка, тоже не переезжает
 	var payload := JSON.stringify(data)
 	var text := JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 	_remember_code_id(id)

@@ -37,6 +37,7 @@ func _init() -> void:
 	_test_time()
 	_test_quarry()
 	_test_trips_workshop_railway()
+	_test_lucky_and_pass()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -893,6 +894,118 @@ func _test_trips_workshop_railway() -> void:
 	_check(RailwayView.grid_of(0) == Vector2i(0, 0) and RailwayView.grid_of(6) == Vector2i(5, 1) and RailwayView.grid_of(10) == Vector2i(5, 5)
 			and RailwayView.grid_of(16) == Vector2i(0, 4) and RailwayView.grid_of(19) == Vector2i(0, 1), "board ring layout")
 	_set_noon()
+
+
+## «Сундук удачи» (1 из 3) и «Пропуск шахтёра».
+func _test_lucky_and_pass() -> void:
+	_set_noon()
+	# --- сундук: копится от игры, до трёх; три разные карты; выбор одной ---
+	var s := ClickerState.new()
+	_check(not s.lucky.tick(Lucky.LUCKY_SECONDS - 1.0) and s.lucky.tick(2.0) and s.lucky.chests == 1, "chest after seven minutes of play")
+	for i in 10:
+		s.lucky.tick(Lucky.LUCKY_SECONDS)
+	_check(s.lucky.chests == Lucky.LUCKY_CAP, "chests capped")
+	_check(s.lucky.open() and s.lucky.offer.size() == 3 and s.lucky.chests == Lucky.LUCKY_CAP - 1, "opening shows three cards")
+	var kinds := {}
+	for card in s.lucky.offer:
+		kinds[str(card["kind"])] = true
+	_check(kinds.size() == 3, "three different cards")
+	var offer_text := str(s.lucky.offer)
+	_check(s.lucky.open() and str(s.lucky.offer) == offer_text, "reopening keeps the same cards")
+	var back := ClickerState.new()
+	back.load_from_text(s.serialize())
+	_check(str(back.lucky.offer) == offer_text, "open chest survives a restart")
+	s.diamonds = 100
+	_check(s.lucky.reroll(s) and not s.lucky.reroll(s), "one reroll per chest")
+	_check(not s.lucky.take(0, s).is_empty() and s.lucky.offer.is_empty() and s.lucky.opened == 1, "taking a card closes the chest")
+	_check(s.lucky.take(0, s).is_empty(), "nothing to take after choosing")
+	for i in 300:
+		for card in Lucky.roll_cards(false):
+			_check_quiet(int(card["rarity"]) == 3 or str(card["kind"]) != "point", "skill point card only legendary")
+		for card in Lucky.roll_cards(true):
+			_check_quiet(int(card["rarity"]) >= 1, "golden chest has rare or better")
+	_flush_quiet()
+	# карты: смена ×2, проклятие ×0.5 с наградой сразу
+	var f := ClickerState.new()
+	f.add_coins(1.0e6)
+	f.levels["rain"] = 5
+	var base := f.income_per_second()
+	f.lucky.offer = [{"kind": "frenzy", "rarity": 0}, {"kind": "gamble", "rarity": 1}, {"kind": "gems", "rarity": 2}]
+	f.lucky.take(0, f)
+	_check(absf(f.income_per_second() - base * 2.0) < base * 0.01 and is_equal_approx(f.luck_time, 60.0), "lucky shift doubles income for a minute")
+	f.tick_boost(61.0)
+	_check(absf(f.income_per_second() - base) < base * 0.01, "lucky shift ends")
+	f.lucky.offer = [{"kind": "frenzy", "rarity": 0}, {"kind": "gamble", "rarity": 1}, {"kind": "gems", "rarity": 2}]
+	var coins := f.coins
+	var got := f.lucky.take(1, f)
+	_check(f.coins - coins > base * 3500.0 and f.income_per_second() < base * 0.51, "cursed gold pays now, halves income for a while")
+	_check(float(got["curse"]) == Lucky.CURSE_SECONDS[1], "curse length by rarity")
+	# проклятие и смена не влияют на офлайн-доход
+	var away := ClickerState.new()
+	away.levels["rain"] = 5
+	away.start_luck(Lucky.FRENZY_FACTOR, 400.0)
+	var text := away.serialize()
+	var plain := ClickerState.new()
+	plain.levels["rain"] = 5
+	var plain_text := plain.serialize()
+	ClickerState.clock_offset += 3600.0
+	var a := ClickerState.new()
+	var b := ClickerState.new()
+	var earned_a := a.load_from_text(text)
+	var earned_b := b.load_from_text(plain_text)
+	_check(absf(earned_a - earned_b) <= earned_b * 0.01 and a.luck_time == 0.0, "lucky card does not boost offline income")
+	_set_noon()
+
+	# --- пропуск: опыт = очки наряда, уровни, бесплатная и золотая дорожки ---
+	var p := ClickerState.new()
+	_check(p.miner_pass.level() == 0 and not p.miner_pass.has_premium(), "pass starts at level 0")
+	p.quarry.note("boss", 10)
+	var xp := p.miner_pass.current_xp()
+	_check(xp == p.quarry.rush_now_points() and xp >= 200, "pass xp follows daily task points")
+	_check(p.miner_pass.level() == floori(xp / 200.0), "pass level from xp")
+	_check(p.miner_pass.claimable("free", 1) and not p.miner_pass.claimable("gold", 1), "gold track needs the golden pass")
+	var picks := p.quarry.picks
+	_check(not p.miner_pass.claim("free", 1, p).is_empty() and p.quarry.picks == picks + 5, "level 1 free reward")
+	_check(p.miner_pass.claim("free", 1, p).is_empty(), "reward claimed once")
+	p.miner_pass.unlock_premium()
+	_check(not p.miner_pass.claim("gold", 1, p).is_empty() and p.quarry.picks == picks + 25, "gold reward is four times bigger")
+	var gold := MinerPass.reward("gold", 10)
+	_check(int(gold["points"]) == 2 and int(gold["golden"]) == 1, "special gold level 10")
+	p.miner_pass.xp = MinerPass.LEVELS * MinerPass.XP_PER_LEVEL + 450
+	_check(p.miner_pass.level() == MinerPass.LEVELS and p.miner_pass.overflow_ready() == 2, "xp beyond level 30 gives chests")
+	var chests := p.lucky.chests
+	var total := p.miner_pass.claim_all(p)
+	_check(p.miner_pass.claimable_count() == 0 and p.lucky.chests >= chests + 2 and int(total.get("points", 0)) > 0, "claim all takes every reward")
+	_check(p.lucky.golden > 0 and p.lucky.open() and p.lucky.offer_golden, "golden chest opens first")
+	var pass_back := ClickerState.new()
+	pass_back.load_from_text(p.serialize())
+	_check(pass_back.miner_pass.has_premium() and pass_back.miner_pass.claimed("gold", 5), "pass persisted")
+	# новый сезон всё обнуляет
+	ClickerState.clock_offset += 86400.0 * MinerPass.SEASON_DAYS
+	_check(pass_back.miner_pass.current_xp() == 0 and not pass_back.miner_pass.has_premium() and not pass_back.miner_pass.claimed("free", 1), "new season resets the pass")
+	_set_noon()
+	_check(MinerPass.season_left() > 0.0 and MinerPass.season_left() <= 86400.0 * MinerPass.SEASON_DAYS, "season time left in range")
+	var broken := ClickerState.new()
+	broken.load_from_text(JSON.stringify({"lucky": {"chests": 99, "offer": [{"kind": "x"}]}, "pass": {"claimed_free": -5, "xp": "a"}, "luck_factor": 50, "luck_time": 9999}))
+	_check(broken.lucky.chests == Lucky.LUCKY_CAP and broken.lucky.offer.is_empty() and broken.miner_pass.claimed_free == 0, "broken chest and pass data sanitised")
+	_check(broken.luck_factor <= Lucky.FRENZY_FACTOR and broken.luck_time <= 600.0, "broken luck clamped")
+
+
+var _quiet_fail := {}
+
+
+## Проверка в цикле: одна строка в отчёте на имя, а не сотни.
+func _check_quiet(condition: bool, name: String) -> void:
+	if not condition:
+		_quiet_fail[name] = true
+	elif not _quiet_fail.has(name):
+		_quiet_fail[name] = false
+
+
+func _flush_quiet() -> void:
+	for name in _quiet_fail:
+		_check(not bool(_quiet_fail[name]), name)
+	_quiet_fail.clear()
 
 
 func _test_save_load() -> void:

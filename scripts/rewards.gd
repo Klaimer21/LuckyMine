@@ -17,6 +17,7 @@ var _rebuild_journal: Callable
 var _on_dynamite_changed: Callable
 var _biome: Callable
 var _ads := Ads.new()
+var _store := Store.new()
 var _offline_doubled := false
 
 
@@ -393,3 +394,80 @@ func on_cart_roll() -> void:
 	state.save()
 	_refresh.call()
 	_rebuild_journal.call()
+
+
+# ---------- Сундук удачи и пропуск шахтёра ----------
+
+
+func open_lucky() -> void:
+	if not state.lucky.open():
+		return
+	state.save()
+	_sfx.play("claim", -6.0)
+	LuckyView.show(host, state, self)
+
+
+func on_lucky_take(index: int) -> void:
+	var result := state.lucky.take(index, state)
+	if result.is_empty():
+		return
+	_sfx.play("coin", -4.0)
+	_settings.vibrate(30)
+	var name := Tr.t(str(Lucky.KINDS[str(result["kind"])]["name"]))
+	var parts: Array[String] = []
+	if result.has("coins"):
+		parts.append(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])))
+	if result.has("diamonds"):
+		parts.append(Tr.t("Алмазы: +%d") % int(result["diamonds"]))
+	if result.has("picks"):
+		parts.append(Tr.t("Кирки +%d") % int(result["picks"]))
+	if result.has("tickets"):
+		parts.append(Tr.t("Жетоны узкоколейки +%d") % int(result["tickets"]))
+	if int(result.get("dynamite", 0)) > 0:
+		parts.append(Tr.t("Динамит +%d") % int(result["dynamite"]))
+		_on_dynamite_changed.call()
+	if result.has("points"):
+		parts.append(Tr.t("Очко навыков +1"))
+	_toast.call(name + (": " + ", ".join(parts) if not parts.is_empty() else ""))
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_lucky_reroll() -> void:
+	if state.lucky.reroll(state):
+		state.save()
+		_sfx.play("tick", -4.0)
+	LuckyView.show(host, state, self)
+
+
+func on_pass_claim(track: String, level: int) -> void:
+	if state.miner_pass.claim(track, level, state).is_empty():
+		return
+	_after_pass_claim()
+
+
+func on_pass_claim_all() -> void:
+	var total := state.miner_pass.claim_all(state)
+	if total.is_empty():
+		return
+	_after_pass_claim()
+	_toast.call(Tr.t("Награды пропуска") + ": " + PassView.reward_text(total).replace("+", "+"))
+
+
+func _after_pass_claim() -> void:
+	_sfx.play("claim", -4.0)
+	_settings.vibrate(30)
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_pass_buy() -> void:
+	if state.miner_pass.has_premium():
+		return
+	_store.setup(host)
+	_store.request(MinerPass.PRODUCT, func() -> void:
+			state.miner_pass.unlock_premium()
+			_toast.call(Tr.t("Золотой пропуск открыт до конца сезона"))
+			_after_pass_claim())
