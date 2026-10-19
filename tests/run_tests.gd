@@ -39,6 +39,7 @@ func _init() -> void:
 	_test_trips_workshop_railway()
 	_test_lucky_and_pass()
 	_test_pets_and_tower()
+	_test_artifacts_and_dungeons()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -1070,6 +1071,79 @@ func _test_pets_and_tower() -> void:
 	var tb := ClickerState.new()
 	tb.load_from_text(t.serialize())
 	_check(tb.tower.next_floor == t.tower.next_floor and tb.tower.best == t.tower.best, "tower persisted")
+	_set_noon()
+
+
+## «Артефакты» (осколки, открытие, уровни, бонусы) и «Подземелья дня» (ключи, уровни, правило дня, зачистка).
+func _test_artifacts_and_dungeons() -> void:
+	_set_noon()
+	var s := ClickerState.new()
+	_check(s.artifacts.unlocked_count() == 0 and s.artifacts.cost_next("pick") == 10 and s.artifacts.cost_next("crown") == 30, "artifacts start closed with rarity unlock costs")
+	_check(not s.artifacts.upgrade("pick"), "no shards, no unlock")
+	s.artifacts.shards["pick"] = 14
+	_check(s.artifacts.upgrade("pick") and s.artifacts.level("pick") == 1 and int(s.artifacts.shards["pick"]) == 4, "unlock spends shards")
+	_check(s.artifacts.upgrade("pick") and s.artifacts.level("pick") == 2 and int(s.artifacts.shards["pick"]) == 0, "level 2 costs 4 shards")
+	_check(is_equal_approx(s.hand_payout_factor(), 1.08), "pick artifact adds hand payout")
+	s.artifacts.levels["crown"] = 10
+	_check(s.artifacts.cost_next("crown") == 0 and not s.artifacts.can_upgrade("crown"), "max level")
+	var base := ClickerState.new()
+	base.levels["rain"] = 5
+	var income := base.income_per_second()
+	base.artifacts.levels["crown"] = 4
+	_check(absf(base.income_per_second() / income - 1.2) < 0.001, "crown adds income")
+	base.artifacts.levels["heart"] = 2
+	var hit := Tower.tap_damage(base)
+	_check(is_equal_approx(hit, 5.0 * 1.1), "heart of the mountain strengthens hits")
+	var drops := base.artifacts.drop(200)
+	var total := 0
+	for id in drops:
+		total += int(drops[id])
+	_check(total == 200 and int(drops.get("pick", 0)) > int(drops.get("crown", 0)), "shard drops favour common artifacts")
+	var ab := ClickerState.new()
+	ab.load_from_text(s.serialize())
+	_check(ab.artifacts.level("pick") == 2 and ab.artifacts.level("crown") == 10, "artifacts persisted")
+	var bad := ClickerState.new()
+	bad.load_from_text(JSON.stringify({"artifacts": {"levels": {"pick": 99, "x": 2}, "shards": {"lamp": -5}}}))
+	_check(bad.artifacts.level("pick") == Artifacts.MAX_LEVEL and int(bad.artifacts.shards["lamp"]) == 0, "broken artifacts clamped")
+
+	# --- подземелья ---
+	var d := ClickerState.new()
+	_check(d.dungeons.keys_left("adit") == Dungeons.KEYS and d.dungeons.next_level("adit") == 1, "dungeon starts at level 1 with two keys")
+	var lose := d.dungeons.finish("adit", false, d)
+	_check(not bool(lose["won"]) and d.dungeons.keys_left("adit") == Dungeons.KEYS, "defeat keeps the key")
+	_check(d.dungeons.sweep("adit", d).is_empty(), "nothing to sweep before the first clear")
+	var picks := d.quarry.picks
+	var win := d.dungeons.finish("adit", true, d)
+	_check(bool(win["won"]) and float(win["coins"]) > 0.0 and d.quarry.picks > picks and d.dungeons.keys_left("adit") == 1, "victory pays and spends a key")
+	_check(d.dungeons.next_level("adit") == 2, "next level unlocked")
+	var gems := d.diamonds
+	d.dungeons.finish("grotto", true, d)
+	_check(d.diamonds > gems and d.pets.baits >= 1, "crystal grotto pays diamonds and baits")
+	var crypt := d.dungeons.finish("crypt", true, d)
+	var crypt_total := 0
+	for id in crypt["shards"]:
+		crypt_total += int(crypt["shards"][id])
+	_check(crypt_total >= 3, "crypt pays artifact shards")
+	var swept := d.dungeons.sweep("adit", d)
+	_check(int(swept["level"]) == 1 and d.dungeons.keys_left("adit") == 0, "sweep repeats the best level for a key")
+	_check(d.dungeons.finish("adit", true, d).is_empty() and d.dungeons.sweep("adit", d).is_empty(), "no keys, no entry")
+	d.dungeons.add_keys(1)
+	_check(d.dungeons.keys_left("adit") == 1 and d.dungeons.keys_left("crypt") == 2, "ad adds a key to every dungeon")
+	ClickerState.clock_offset += 86400.0
+	_check(d.dungeons.keys_left("adit") == Dungeons.KEYS, "keys refill the next day")
+	_check(Dungeons.reward_for("grotto", 50)["diamonds"] > Dungeons.reward_for("grotto", 1)["diamonds"], "rewards grow with level")
+	var rule_count := 0
+	for r in Dungeons.RULES:
+		if r.has("hp") or r.has("dynamite") or r.has("crit_every") or r.has("reward"):
+			rule_count += 1
+	_check(Dungeons.RULES.size() == 7 and rule_count == 7, "a rule for every weekday")
+	var db := ClickerState.new()
+	db.load_from_text(d.serialize())
+	_check(int(db.dungeons.best["adit"]) == 1 and int(db.dungeons.best["crypt"]) == 1, "dungeons persisted")
+	var tower := ClickerState.new()
+	tower.tower.next_floor = 5
+	var boss := tower.tower.finish(true, tower)
+	_check(boss.has("shards"), "tower guardian drops artifact shards")
 	_set_noon()
 
 

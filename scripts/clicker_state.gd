@@ -154,6 +154,8 @@ var railway := Railway.new()         # «Узкоколейка»: поле-ко
 var lucky := Lucky.new()             # «Сундук удачи»: три карты на выбор (lucky.gd)
 var miner_pass := MinerPass.new()    # «Пропуск шахтёра»: сезон с бесплатной и золотой дорожками (miner_pass.gd)
 var pets := Pets.new()               # «Подземные друзья»: питомцы со звёздами и слотами (pets.gd)
+var artifacts := Artifacts.new()     # «Артефакты»: древности с осколками и уровнями (artifacts.gd)
+var dungeons := Dungeons.new()       # «Подземелья дня»: три подземелья с ключами и правилом дня (dungeons.gd)
 var tower := Tower.new()             # «Башня испытаний»: этажи на время (tower.gd)
 var luck_time := 0.0                 # действие карты сундука: «Удачная смена» (×2) или проклятие (×0.5), секунд осталось
 var luck_factor := 1.0
@@ -236,7 +238,7 @@ func blaster_share() -> float:
 
 ## Лебёдка: во сколько раз походы короче обычного.
 func expedition_time_factor() -> float:
-	return (1.0 - float(Machines.data("winch")["step"]) * machine_level("winch")) * float(TRIPS_TIME[skill_level("trips")])
+	return (1.0 - float(Machines.data("winch")["step"]) * machine_level("winch")) * float(TRIPS_TIME[skill_level("trips")]) * (1.0 - artifacts.bonus("trips_time"))
 
 
 ## Длительность похода типа index с учётом Лебёдки.
@@ -250,7 +252,7 @@ func rocks_per_throw() -> int:
 
 ## Навык «Рука»: во сколько раз больше монет за глыбы от касаний.
 func hand_payout_factor() -> float:
-	return float(HAND_PAYOUT[skill_level("hand")])
+	return float(HAND_PAYOUT[skill_level("hand")]) * (1.0 + artifacts.bonus("hand"))
 
 
 ## Навык «Хранители»: золотая глыба, пойманная касанием, платит больше.
@@ -280,7 +282,7 @@ func max_face() -> int:
 
 ## Множитель добычи: улучшение «Добыча», бонус зоны и «Золотая лихорадка» (×7 после касания золотой глыбы).
 func multiplier() -> float:
-	return workshop.income_factor() * (1.0 + pets.bonus("income")) * pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0) * (luck_factor if luck_time > 0.0 else 1.0)
+	return workshop.income_factor() * (1.0 + pets.bonus("income")) * (1.0 + artifacts.bonus("income")) * pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0) * (luck_factor if luck_time > 0.0 else 1.0)
 
 
 ## Шанс критического обвала и удвоения (улучшения «Критический обвал» и «Двойной улов»).
@@ -485,7 +487,7 @@ func use_dynamite() -> bool:
 
 
 func dynamite_seconds() -> float:
-	return (DYNAMITE_SECONDS[skill_level("dynamite")] + float(Machines.data("reactor")["step"]) * machine_level("reactor")) * (1.0 + pets.bonus("dynamite"))
+	return (DYNAMITE_SECONDS[skill_level("dynamite")] + float(Machines.data("reactor")["step"]) * machine_level("reactor")) * (1.0 + pets.bonus("dynamite")) * (1.0 + artifacts.bonus("dynamite"))
 
 
 ## Находок, которые динамит выбивает из породы: 3 плюс по одной за каждые две зоны.
@@ -502,7 +504,7 @@ func dynamite_spark() -> bool:
 
 
 func diamond_chance_factor() -> float:
-	return (1.3 if skill_level("luck") >= 1 else 1.0) * (1.0 + 0.25 * int(meta["diamonds"])) * (1.25 if Biomes.planet_mod(planet) == "diamonds" else 1.0) * (1.0 + float(Machines.data("compressor")["step"]) * machine_level("compressor")) * (1.0 + pets.bonus("diamonds"))
+	return (1.3 if skill_level("luck") >= 1 else 1.0) * (1.0 + 0.25 * int(meta["diamonds"])) * (1.25 if Biomes.planet_mod(planet) == "diamonds" else 1.0) * (1.0 + float(Machines.data("compressor")["step"]) * machine_level("compressor")) * (1.0 + pets.bonus("diamonds")) * (1.0 + artifacts.bonus("diamonds"))
 
 
 func mini_seconds() -> float:
@@ -665,6 +667,10 @@ func achievement_value(achievement: Dictionary) -> float:
 			return float(tower.best)
 		"pets":
 			return float(pets.kinds())
+		"dungeon":
+			return float(dungeons.best_any())
+		"artifacts":
+			return float(artifacts.unlocked_count())
 		"research":
 			return float(workshop.total_levels())
 	return 0.0
@@ -964,7 +970,7 @@ func relic_kinds() -> int:
 ## Есть что забрать или потратить: журнал в шапке подсвечивается.
 func needs_attention() -> bool:
 	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready() or quarry.rush_any_claimable() or workshop.ready(now()) \
-			or miner_pass.claimable_count() > 0 or pets.free_available()
+			or miner_pass.claimable_count() > 0 or pets.free_available() or artifacts.any_upgradable()
 
 
 ## Подсказка показывается один раз: возвращает true, если это первый раз (и запоминает).
@@ -1264,7 +1270,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expeditions": expeditions, "expedition_offers": expedition_offers, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "workshop": workshop.to_dict(), "railway": railway.to_dict(), "lucky": lucky.to_dict(), "pets": pets.to_dict(), "tower": tower.to_dict(), "pass": miner_pass.to_dict(), "luck_time": luck_time, "luck_factor": luck_factor, "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expeditions": expeditions, "expedition_offers": expedition_offers, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "workshop": workshop.to_dict(), "railway": railway.to_dict(), "lucky": lucky.to_dict(), "pets": pets.to_dict(), "tower": tower.to_dict(), "artifacts": artifacts.to_dict(), "dungeons": dungeons.to_dict(), "pass": miner_pass.to_dict(), "luck_time": luck_time, "luck_factor": luck_factor, "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1462,6 +1468,8 @@ func _apply_save(data: Dictionary) -> float:
 	railway.from_dict(_as_dict(data.get("railway")))
 	pets.from_dict(_as_dict(data.get("pets")))
 	tower.from_dict(_as_dict(data.get("tower")))
+	artifacts.from_dict(_as_dict(data.get("artifacts")))
+	dungeons.from_dict(_as_dict(data.get("dungeons")))
 	lucky.from_dict(_as_dict(data.get("lucky")))
 	miner_pass.from_dict(_as_dict(data.get("pass")))
 	luck_time = 0.0                       # офлайн-доход считается без карты сундука (её время ниже)
@@ -1483,7 +1491,7 @@ func _apply_save(data: Dictionary) -> float:
 		add_dynamite(made)
 		dynamo_progress = fposmod(away + dynamo_progress, dynamo)
 	offline_capped = gone > offline_cap_seconds()
-	var earned := income_per_second() * away * float(SHIFT_INCOME[skill_level("shift")]) * (1.0 + 0.01 * machine_level("solar")) * (1.0 + pets.bonus("offline"))
+	var earned := income_per_second() * away * float(SHIFT_INCOME[skill_level("shift")]) * (1.0 + 0.01 * machine_level("solar")) * (1.0 + pets.bonus("offline")) * (1.0 + artifacts.bonus("offline"))
 	add_coins(earned)
 	luck_factor = clampf(_num(data.get("luck_factor"), 1.0), Lucky.CURSE_FACTOR, Lucky.FRENZY_FACTOR)
 	luck_time = clampf(_num(data.get("luck_time"), 0.0) - gone, 0.0, 600.0)

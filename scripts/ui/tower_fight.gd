@@ -1,7 +1,7 @@
 class_name TowerFight
 extends Control
-## Бой на этаже башни: глыба этажа, шкала прочности, таймер, динамит (−25% прочности). Касание по глыбе — удар
-## силой Tower.tap_damage(). По окончании вызывает on_done(won) и закрывается.
+## Бой с глыбой на время: этаж башни (setup) или уровень подземелья (configure с правилом дня). Шкала прочности, таймер,
+## динамит (доля прочности), касание по глыбе — удар силой Tower.tap_damage(). По окончании вызывает on_done(won).
 
 var state: ClickerState
 var on_done: Callable
@@ -16,15 +16,29 @@ var _bar: ProgressBar
 var _hp_label: Label
 var _timer: Label
 var _dynamite: Button
+var _dynamite_share := Tower.DYNAMITE_SHARE
+var _crit_every := 0                      # каждое N-е касание бьёт втрое (правило «Трещины»; 0 — нет)
+var _taps := 0
 
 
 func setup(p_state: ClickerState, done: Callable) -> TowerFight:
+	var floor_number := p_state.tower.next_floor
+	var boss := Tower.is_boss(floor_number)
+	var title := (Tr.t("Хранитель этажа") + " · " if boss else "") + Tr.t("Этаж %d") % floor_number
+	return configure(p_state, title, UiTheme.BRASS if boss else UiTheme.TEXT, Tower.hp_for(floor_number), Tower.FIGHT_SECONDS, {}, done)
+
+
+## Общий бой: rules — dynamite (доля прочности за динамит, 0 — динамит не работает), crit_every, text (подпись правила).
+func configure(p_state: ClickerState, title_text: String, title_color: Color, hp: float, seconds: float, rules: Dictionary,
+		done: Callable) -> TowerFight:
 	state = p_state
 	on_done = done
-	var floor_number := state.tower.next_floor
-	_max_hp = Tower.hp_for(floor_number)
+	_max_hp = hp
 	_hp = _max_hp
+	_time = seconds
 	_damage = Tower.tap_damage(state)
+	_dynamite_share = float(rules.get("dynamite", Tower.DYNAMITE_SHARE))
+	_crit_every = int(rules.get("crit_every", 0))
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var dim := ColorRect.new()
@@ -39,10 +53,15 @@ func setup(p_state: ClickerState, done: Callable) -> TowerFight:
 	column.offset_bottom = -120
 	column.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	add_child(column)
-	var boss := Tower.is_boss(floor_number)
-	var title := UiTheme.make_label((Tr.t("Хранитель этажа") + " · " if boss else "") + Tr.t("Этаж %d") % floor_number, 52, UiTheme.BRASS if boss else UiTheme.TEXT, true)
+	var title := UiTheme.make_label(title_text, 52, title_color, true)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(title)
+	if str(rules.get("text", "")) != "":
+		var rule := UiTheme.make_label(str(rules["text"]), 28, UiTheme.BRASS)
+		rule.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rule.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		column.add_child(rule)
 	_timer = UiTheme.make_label("", 64, UiTheme.TEXT, true)
 	_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_timer)
@@ -68,7 +87,7 @@ func setup(p_state: ClickerState, done: Callable) -> TowerFight:
 	column.add_child(hint)
 	_dynamite = UiTheme.make_key(Tr.t("Динамит ×%d") % state.dynamite_stock, 30, "ember")
 	_dynamite.custom_minimum_size.y = 110
-	_dynamite.disabled = state.dynamite_stock <= 0
+	_dynamite.disabled = state.dynamite_stock <= 0 or _dynamite_share <= 0.0
 	_dynamite.pressed.connect(_blast)
 	column.add_child(_dynamite)
 	_refresh()
@@ -92,15 +111,19 @@ func _refresh() -> void:
 
 
 func _hit() -> void:
+	_taps += 1
+	if _crit_every > 0 and _taps % _crit_every == 0:
+		_deal(_damage * 3.0, true)
+		return
 	_deal(_damage, false)
 
 
 func _blast() -> void:
-	if _over or not state.use_dynamite():
+	if _over or _dynamite_share <= 0.0 or not state.use_dynamite():
 		return
 	_dynamite.text = Tr.t("Динамит ×%d") % state.dynamite_stock
 	_dynamite.disabled = state.dynamite_stock <= 0
-	_deal(_max_hp * Tower.DYNAMITE_SHARE, true)
+	_deal(_max_hp * _dynamite_share, true)
 
 
 func _deal(amount: float, big: bool) -> void:

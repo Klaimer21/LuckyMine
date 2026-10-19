@@ -137,6 +137,9 @@ func grant_ad_reward(placement: String) -> void:
 			if not state.workshop.hurry(Workshop.AD_HURRY):
 				return
 			_toast.call(Tr.t("Исследование ускорено на 30 минут"))
+		"dungeon":
+			state.dungeons.add_keys(1)
+			_toast.call(Tr.t("Ещё по ключу в каждое подземелье"))
 		"tower":
 			state.tower.attempts += 1
 			_toast.call(Tr.t("Ещё одна попытка в башне"))
@@ -531,6 +534,8 @@ func _on_tower_done(won: bool) -> void:
 		var parts: Array[String] = [Tr.fmt("+%d алмазов", [int(result["diamonds"])]), Tr.t("Приманки: %d") % int(result["baits"])]
 		if result.has("golden"):
 			parts.append(Tr.t("Золотой сундук ×%d") % int(result["golden"]))
+		if result.has("shards"):
+			parts.append(shards_text(result["shards"]))
 		if result.has("points"):
 			parts.append(Tr.t("Очко навыков +1"))
 		var text := UiTheme.make_text(", ".join(parts), 30, UiTheme.TEXT)
@@ -540,6 +545,92 @@ func _on_tower_done(won: bool) -> void:
 		_sfx.play("tick", -6.0)
 		modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 48, UiTheme.TEXT, true))
 		var hint := UiTheme.make_text(Tr.t("Сильнее бьют питомцы (все собранные), исследования мастерской и глубина. Попыток осталось: %d") % state.tower.attempts_left(), 26, UiTheme.MUTE)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		modal.body.add_child(hint)
+	var close := UiTheme.make_button("Дальше", true, 32)
+	close.pressed.connect(modal.close)
+	modal.body.add_child(close)
+	host.add_child(modal)
+	_refresh.call()
+	_on_dynamite_changed.call()
+	_rebuild_journal.call()
+
+
+
+# ---------- Артефакты и подземелья ----------
+
+## «Осколки: Кирка первого шахтёра ×2, …»
+static func shards_text(got: Dictionary) -> String:
+	var parts: Array[String] = []
+	for id in got:
+		parts.append("%s ×%d" % [Tr.t(str(Artifacts.data(str(id))["name"])), int(got[id])])
+	return Tr.t("Осколки") + ": " + ", ".join(parts)
+
+
+func on_artifact_upgrade(id: String) -> void:
+	if not state.artifacts.upgrade(id):
+		return
+	_sfx.play("claim", -4.0)
+	_settings.vibrate(30)
+	var level := state.artifacts.level(id)
+	_toast.call(Tr.t(str(Artifacts.data(id)["name"])) + ": " + (Tr.t("открыт") if level == 1 else Tr.t("ур. %d") % level))
+	_on_dynamite_changed.call()
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_dungeon_fight(id: String) -> void:
+	if state.dungeons.keys_left(id) <= 0:
+		return
+	var level := state.dungeons.next_level(id)
+	var rule := Dungeons.rule()
+	var rules := {"text": Tr.t("Правило дня") + ": " + Tr.t(str(rule["text"]))}
+	if rule.has("dynamite"):
+		rules["dynamite"] = float(rule["dynamite"])
+	if rule.has("crit_every"):
+		rules["crit_every"] = int(rule["crit_every"])
+	var title := Tr.t(str(Dungeons.data(id)["name"])) + " · " + Tr.t("Уровень %d") % level
+	_sfx.play("tick", -2.0)
+	var fight := TowerFight.new().configure(state, title, UiTheme.TEXT, Dungeons.hp_for(level), Dungeons.seconds(), rules,
+			func(won: bool) -> void: _show_dungeon_result(state.dungeons.finish(id, won, state)))
+	host.add_child(fight)
+
+
+func on_dungeon_sweep(id: String) -> void:
+	var result := state.dungeons.sweep(id, state)
+	if result.is_empty():
+		return
+	_show_dungeon_result(result)
+
+
+func _show_dungeon_result(result: Dictionary) -> void:
+	if result.is_empty():
+		return
+	state.save()
+	var modal := Modal.new()
+	if bool(result.get("won", false)):
+		_sfx.play("claim", -2.0)
+		_settings.vibrate(50)
+		modal.body.add_child(UiTheme.make_label(Tr.t("Уровень %d пройден!") % int(result["level"]), 46, UiTheme.BRASS, true))
+		var parts: Array[String] = []
+		if result.has("coins"):
+			parts.append(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])))
+		if result.has("picks"):
+			parts.append(Tr.t("Кирки +%d") % int(result["picks"]))
+		if result.has("diamonds"):
+			parts.append(Tr.t("Алмазы: +%d") % int(result["diamonds"]))
+		if result.has("baits"):
+			parts.append(Tr.t("Приманки: %d") % int(result["baits"]))
+		if result.has("shards"):
+			parts.append(shards_text(result["shards"]))
+		var text := UiTheme.make_text("\n".join(parts), 28, UiTheme.TEXT)
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		modal.body.add_child(text)
+	else:
+		_sfx.play("tick", -6.0)
+		modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 46, UiTheme.TEXT, true))
+		var hint := UiTheme.make_text(Tr.t("Ключ не потрачен. Сильнее бьют питомцы, артефакт «Сердце горы», исследования и глубина."), 26, UiTheme.MUTE)
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		modal.body.add_child(hint)
 	var close := UiTheme.make_button("Дальше", true, 32)

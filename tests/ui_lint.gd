@@ -69,7 +69,7 @@ func _screens(language: String) -> void:
 	state.pets.copies["mole"] = 3
 	state.pets.copies["dragon"] = 1
 	state.pets.equipped = ["mole"]
-	for extra in [[3, "_rewards_mode", "пропуск шахтёра", 1], [6, "_dig_mode", "узкоколейка", 1], [6, "_dig_mode", "башня", 2]]:
+	for extra in [[3, "_rewards_mode", "пропуск шахтёра", 1], [6, "_dig_mode", "узкоколейка", 1], [6, "_dig_mode", "башня", 2], [6, "_dig_mode", "подземелья", 3], [7, "_friends_mode", "артефакты", 1]]:
 		_main._journal._tab = int(extra[0])
 		_main._journal.set(str(extra[1]), int(extra[3]))
 		_main._journal.open()
@@ -89,6 +89,13 @@ func _screens(language: String) -> void:
 	_main._rewards.on_tower_fight()
 	await _wait(0.4)
 	await _check(language, "бой в башне")
+	for child in _main._ui.get_children():
+		if child is TowerFight:
+			child.queue_free()
+	await _wait(0.2)
+	_main._rewards.on_dungeon_fight("crypt")
+	await _wait(0.4)
+	await _check(language, "бой в подземелье")
 	for child in _main._ui.get_children():
 		if child is TowerFight:
 			child.queue_free()

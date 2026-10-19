@@ -37,13 +37,13 @@ const JUNK_SLOTS := 4
 const JUNK_DISCOUNTS := [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
 
 ## Наряд дня: очки за действие; тема дня (понедельник = 0) утраивает очки своих действий, воскресенье удваивает все.
-const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15, "chest": 8, "tower": 15, "summon": 2}
+const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15, "chest": 8, "tower": 15, "summon": 2, "dungeon": 12}
 const RUSH_THEMES := [
 	{"name": "День кирки", "actions": ["pick", "layer"]},
 	{"name": "День подрывника", "actions": ["dynamite"]},
 	{"name": "Золотая среда", "actions": ["golden"]},
 	{"name": "День хранителя", "actions": ["boss", "tower"]},
-	{"name": "День походов", "actions": ["expedition"]},
+	{"name": "День походов", "actions": ["expedition", "dungeon"]},
 	{"name": "Базарный день", "actions": ["junk", "cart", "research"]},
 	{"name": "Воскресный аврал", "actions": []},
 ]

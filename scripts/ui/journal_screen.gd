@@ -28,6 +28,9 @@ signal pass_buy
 signal pet_summon(count: int)
 signal pet_toggle(id: String)
 signal tower_fight
+signal artifact_upgrade(id: String)
+signal dungeon_fight(id: String)
+signal dungeon_sweep(id: String)
 
 const ORE_NAMES := {1: "Медь", 2: "Железо", 3: "Золото", 4: "Алмаз"}
 ## Пиксельные значки предметов: магазин и реклама (по ключу покупки), достижения (по виду счётчика), экспедиции.
@@ -38,7 +41,7 @@ const SHOP_ICONS := {
 const ACHIEVEMENT_ICONS := {
 	"zone": "px_map", "prestige": "px_hourglass", "gold": "px_bag", "diamond": "gem", "golden": "px_crown", "dynamite": "px_bomb",
 	"boss": "px_shield", "planet": "px_rocket", "rocks": "px_hammer", "meta": "px_key", "set": "px_trophy",
-	"quarry": "px_pickaxe", "rail": "rail_minecart", "research": "px_gear", "tower": "px_trophy", "pets": "pet_mole",
+	"quarry": "px_pickaxe", "rail": "rail_minecart", "research": "px_gear", "tower": "px_trophy", "pets": "pet_mole", "dungeon": "px_lantern", "artifacts": "art_crown",
 }
 const ORE_ICONS := {1: "ore_copper", 2: "ore_iron", 3: "ore_gold", 4: "ore_diamond"}
 const ORE_COLORS := {1: Color(0.78, 0.47, 0.30), 2: Color(0.50, 0.58, 0.68), 3: Color(0.92, 0.74, 0.32),
@@ -49,6 +52,7 @@ var _content: VBoxContainer
 var _tab := 0                       # 0 — руда, 1 — навыки, 2 — походы, 3 — награды, 4 — планета, 5 — лавка, 6 — забой
 var _pick_timer: Label
 var _rewards_mode := 0              # вкладка «Награды»: 0 — наряд и достижения, 1 — пропуск шахтёра
+var _friends_mode := 0              # вкладка «Друзья»: 0 — питомцы, 1 — артефакты
 var _dig_mode := 0                  # вкладка «Забой»: 0 — поле глыб, 1 — узкоколейка
 var _updaters: Array = []           # таймеры вкладки «Походы» (обновляются без перестройки)
 var _trip_signature := ""           # что готово во вкладке «Походы»: изменилось — перестроить
@@ -131,7 +135,7 @@ func rebuild() -> void:
 		_build_dig_tab()
 		return
 	if _tab == 7:
-		PetsView.build(_content, state, self)
+		_build_friends_tab()
 		return
 	if _tab == 1:
 		_build_skills()
@@ -265,12 +269,33 @@ func _trip_state() -> String:
 	return "".join(parts)
 
 
-## Вкладка «Забой»: переключатель «Забой» / «Узкоколейка».
+## Вкладка «Друзья»: переключатель «Питомцы» / «Артефакты».
+func _build_friends_tab() -> void:
+	var modes := HBoxContainer.new()
+	modes.add_theme_constant_override("separation", 8)
+	_content.add_child(modes)
+	var names := [Tr.t("Питомцы"), Tr.t("Артефакты") + ("  !" if state.artifacts.any_upgradable() else "")]
+	for mode in names.size():
+		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _friends_mode else "dark")
+		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		key.custom_minimum_size.y = 84
+		key.pressed.connect(func() -> void:
+				_friends_mode = mode
+				_fade_next = true
+				rebuild())
+		modes.add_child(key)
+	if _friends_mode == 1:
+		ArtifactsView.build(_content, state, self)
+	else:
+		PetsView.build(_content, state, self)
+
+
+## Вкладка «Забой»: переключатель «Забой» / «Узкоколейка» / «Башня» / «Подземелья».
 func _build_dig_tab() -> void:
 	var modes := HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 8)
 	_content.add_child(modes)
-	var names := [Tr.t("Забой"), Tr.t("Узкоколейка") + "  %d" % state.railway.tickets, Tr.t("Башня")]
+	var names := [Tr.t("Забой"), Tr.t("Узкоколейка") + "  %d" % state.railway.tickets, Tr.t("Башня"), Tr.t("Подземелья")]
 	for mode in names.size():
 		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _dig_mode else "dark")
 		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -285,6 +310,9 @@ func _build_dig_tab() -> void:
 		return
 	if _dig_mode == 2:
 		TowerView.build(_content, state, self)
+		return
+	if _dig_mode == 3:
+		DungeonsView.build(_content, state, self)
 		return
 	var note := UiTheme.make_text("Жетон — один бросок кубика: вагонетка едет по рельсам и забирает добычу клетки. Через депо — круг и награда. Жетоны дают ярусы забоя, походы, хранители, наряд дня и ежедневная награда.", 22, UiTheme.MUTE)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

@@ -29,7 +29,7 @@ static func hp_for(floor_number: int) -> float:
 ## Сила удара: питомцы (все собранные), исследования, глубина и планета.
 static func tap_damage(s: ClickerState) -> float:
 	var zone := Biomes.index_for(s.total_earned, s.planet_scale())
-	return 5.0 + float(s.pets.power()) + 2.0 * s.workshop.total_levels() + 5.0 * zone + 10.0 * s.planet
+	return (5.0 + float(s.pets.power()) + 2.0 * s.workshop.total_levels() + 5.0 * zone + 10.0 * s.planet) * (1.0 + s.artifacts.bonus("strike"))
 
 
 func _roll_day() -> void:
@@ -64,7 +64,7 @@ func finish(won: bool, s: ClickerState) -> Dictionary:
 	return result
 
 
-## Награда этажа: алмазы и приманка; хранитель — ещё приманки и золотой сундук; каждый 25-й — очко навыков.
+## Награда этажа: алмазы и приманка; хранитель — ещё приманки, золотой сундук и 2 осколка артефактов; каждый 25-й — очко навыков.
 static func reward(floor_number: int, s: ClickerState) -> Dictionary:
 	var result := {}
 	var gems := 2 + floori(floor_number / 5.0)
@@ -76,6 +76,7 @@ static func reward(floor_number: int, s: ClickerState) -> Dictionary:
 	if is_boss(floor_number):
 		s.lucky.golden += 1
 		result["golden"] = 1
+		result["shards"] = s.artifacts.drop(2)              # хранитель роняет осколки артефактов
 	if floor_number % 25 == 0:
 		s.skill_points += 1
 		result["points"] = 1

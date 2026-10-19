@@ -18,6 +18,7 @@ const PLACEMENTS := {
 	"tickets": {"cooldown": 3600.0},   # жетоны узкоколейки
 	"trip_offers": {"cooldown": 7200.0},  # новые предложения походов
 	"tower": {"cooldown": 14400.0},    # ещё попытка в башне
+	"dungeon": {"cooldown": 14400.0},  # ещё ключ в каждое подземелье
 	"research": {"cooldown": 1800.0},  # исследование быстрее на 30 минут
 }
 
