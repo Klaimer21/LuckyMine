@@ -203,8 +203,11 @@ func _check() -> void:
 			_bug("level %s = %s" % [key, s.levels[key]])
 	if not _finite(s.income_per_second()) or not _finite(s.multiplier()):
 		_bug("income/multiplier not finite: %s %s" % [s.income_per_second(), s.multiplier()])
-	if s.expedition_active() and s.expedition_remaining() > float(Retention.EXPEDITIONS[s.expedition_type]["hours"]) * 3600.0:
-		_bug("expedition remaining longer than its duration")
+	for slot in s.expeditions.size():
+		if s.expedition_remaining(slot) > float(Retention.EXPEDITIONS[int(s.expeditions[slot]["type"])]["hours"]) * 3600.0:
+			_bug("expedition remaining longer than its duration")
+	if s.expeditions.size() > 3 or s.railway.pos < 0 or s.railway.pos >= Railway.BOARD.size() or s.railway.tickets < 0:
+		_bug("trips/railway out of range: %d trips, pos %d, tickets %d" % [s.expeditions.size(), s.railway.pos, s.railway.tickets])
 	for placement in Ads.PLACEMENTS:
 		if s.ad_remaining(placement) > float(Ads.PLACEMENTS[placement]["cooldown"]) + 1.0 and abs(ClickerState.clock_offset) < 86400.0:
 			_bug("ad cooldown %s longer than configured: %s" % [placement, s.ad_remaining(placement)])

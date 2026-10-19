@@ -36,6 +36,7 @@ func _init() -> void:
 	_test_plurals()
 	_test_time()
 	_test_quarry()
+	_test_trips_workshop_railway()
 	_test_save_load()
 	print("passed %d, failed %d" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
@@ -767,6 +768,133 @@ func _test_quarry() -> void:
 	_check(junk.quarry.junk_day == -1, "broken junk goods are rerolled")
 
 
+## Доска походов (слоты, редкость), «Мастерская» (исследования) и «Узкоколейка» (кольцо с кубиком).
+func _test_trips_workshop_railway() -> void:
+	_set_noon()
+	var hour := 3600.0
+	# --- походы: слоты от зоны, доска из трёх предложений, редкость множит добычу ---
+	var s := ClickerState.new()
+	_check(s.expedition_slots() == 1, "one expedition slot at start")
+	s.ensure_offers()
+	_check(s.expedition_offers.size() == Retention.OFFER_COUNT, "three offers on the board")
+	var offer_before := str(s.expedition_offers[0])
+	_check(s.start_offer(0) and s.expeditions.size() == 1, "offer starts an expedition")
+	_check(s.expedition_offers.size() == Retention.OFFER_COUNT, "taken offer is replaced")
+	_check(not s.start_offer(1), "no free slot, no second expedition")
+	var deep := ClickerState.new()
+	deep.add_coins(Biomes.LIST[4]["from"] * 1.01)
+	_check(deep.expedition_slots() == 3, "three slots from the Crystal Cavern")
+	_check(deep.start_expedition(0) and deep.start_expedition(1) and deep.start_expedition(2) and not deep.start_expedition(0), "three trips at once, not four")
+	var common := ClickerState.new()
+	common.start_expedition(0, 0)
+	var legend := ClickerState.new()
+	legend.start_expedition(0, 3)
+	ClickerState.clock_offset += hour + 10.0
+	var a := common.claim_expedition()
+	var b := legend.claim_expedition()
+	_check(float(b["coins"]) > float(a["coins"]) * 3.5 and int(b["diamonds"]) > int(a["diamonds"]), "legendary trip pays about four times more")
+	_check(str(b["relic"]) != "" and int(b["tickets"]) == 5 and legend.railway.tickets == 3 + 5, "legendary trip brings a curiosity and five tokens")
+	_set_noon()
+	var hurry := ClickerState.new()
+	hurry.start_expedition(1)
+	_check(hurry.shop_available("expedition_skip") and hurry.expedition_hurry(hour), "trip can be hurried")
+	_check(absf(hurry.expedition_remaining(0) - (hurry.expedition_total_seconds(1) - hour)) < 5.0, "hurry takes an hour off")
+	hurry.expedition_hurry(INF)
+	_check(hurry.expedition_ready(0) and not hurry.shop_available("expedition_skip"), "skip finishes the trip")
+	var weights_before := ClickerState.new().rarity_weights()
+	var mapped := ClickerState.new()
+	mapped.workshop.levels["maps"] = 4
+	_check(float(mapped.rarity_weights()[3]) > float(weights_before[3]) and float(mapped.rarity_weights()[0]) < float(weights_before[0]), "maps research favours rare trips")
+	var old := ClickerState.new()
+	old.load_from_text(JSON.stringify({"expedition_type": 2, "expedition_end": ClickerState.now() + hour}))
+	_check(old.expeditions.size() == 1 and int(old.expeditions[0]["type"]) == 2, "old single expedition migrates to a slot")
+	var round_trip := ClickerState.new()
+	round_trip.load_from_text(hurry.serialize())
+	_check(round_trip.expeditions.size() == 1 and int(round_trip.expeditions[0]["type"]) == 1, "trips survive a save")
+	var junk_trips := ClickerState.new()
+	junk_trips.load_from_text(JSON.stringify({"expeditions": [{"type": 9}, "x", {"type": 1, "rarity": 99, "end": 1.0}], "expedition_offers": [{"type": -1}]}))
+	_check(junk_trips.expeditions.size() == 1 and int(junk_trips.expeditions[0]["rarity"]) == 3 and junk_trips.expedition_offers.is_empty(), "broken trips sanitised")
+
+	# --- мастерская: цена — монеты, время удваивается, уровни переживают «Новую шахту» ---
+	_set_noon()
+	var w := ClickerState.new()
+	_check(not w.workshop.start("steel", w), "research needs coins")
+	w.add_coins(1.0e6)
+	var coins_before := w.coins
+	_check(w.workshop.start("steel", w) and w.coins < coins_before, "research charges coins")
+	_check(not w.workshop.start("forge", w), "one research at a time")
+	_check(is_equal_approx(w.workshop.remaining(ClickerState.now()), Workshop.BASE_SECONDS), "first level takes 15 minutes")
+	_check(w.finish_research() == "", "research not ready early")
+	ClickerState.clock_offset += Workshop.BASE_SECONDS + 1.0
+	_check(w.needs_attention(), "ready research lights the journal")
+	var income := w.income_per_second()
+	_check(w.finish_research() == "steel" and w.workshop.level("steel") == 1, "research finishes")
+	_check(w.income_per_second() > income * 1.04, "steel adds income")
+	_check(is_equal_approx(w.workshop.seconds_for("steel"), Workshop.BASE_SECONDS * 2.0), "next level takes twice as long")
+	w.workshop.levels["forge"] = 2
+	w.workshop.levels["rack"] = 1
+	w.workshop.levels["powder"] = 1
+	w.apply_research()
+	_check(is_equal_approx(w.quarry.pick_seconds, Quarry.PICK_SECONDS - 120.0) and w.quarry.pick_cap == Quarry.PICK_CAP + 6, "forge and rack change the pickaxes")
+	var dyn_cap := ClickerState.new().dynamite_max()
+	_check(w.dynamite_max() == dyn_cap + 2, "powder store adds dynamite room")
+	w.add_coins(1.0e12)
+	w.prestige()
+	_check(w.workshop.level("steel") == 1, "research survives a new mine")
+	var wl := ClickerState.new()
+	wl.load_from_text(w.serialize())
+	_check(wl.workshop.level("forge") == 2 and is_equal_approx(wl.quarry.pick_seconds, Quarry.PICK_SECONDS - 120.0), "research persisted and applied on load")
+	w.add_coins(1.0e9)
+	_check(w.workshop.start("guides", w), "next research starts")
+	_check(w.workshop.hurry(Workshop.AD_HURRY) and w.workshop.ready(ClickerState.now()), "ad hurries a short research to the end")
+	var bad := ClickerState.new()
+	bad.load_from_text(JSON.stringify({"workshop": {"levels": {"steel": 99, "x": 3}, "active": "nope"}}))
+	_check(bad.workshop.level("steel") == 5 and not bad.workshop.busy(), "broken workshop data clamped")
+
+	# --- узкоколейка ---
+	var r := ClickerState.new()
+	_check(r.railway.tickets == 3 and r.railway.pos == 0, "railway starts at the depot with three tokens")
+	var res := r.railway.roll(r, 2)
+	_check(r.railway.pos == 2 and r.railway.tickets == 2 and str(res["cell"]) == "picks", "die moves the cart")
+	_check(r.railway.last_path == [1, 2] and r.railway.animate_pending, "path recorded for the animation")
+	r.railway.roll(r, 3)
+	_check(r.railway.pos == 5 + Railway.ARROW_STEPS and bool(r.railway.last_result.get("arrow", false)), "arrow carries the cart further")
+	r.railway.pos = 12
+	r.railway.tickets = 5
+	r.railway.roll(r, 1)
+	_check(r.railway.double_next, "star doubles the next reward")
+	var gems := r.diamonds
+	r.railway.roll(r, 1)
+	_check(bool(r.railway.last_result["doubled"]) and r.diamonds - gems == 2 * (2 + 0) and not r.railway.double_next, "doubled gems")
+	r.railway.pos = 18
+	var laps := r.railway.laps
+	var lap_res := r.railway.roll(r, 4)
+	_check(r.railway.laps == laps + 1 and lap_res.has("lap"), "passing the depot completes a lap")
+	r.railway.tickets = 0
+	_check(r.railway.roll(r).is_empty(), "no tokens, no roll")
+	var tickets := r.railway.tickets
+	r.quarry.picks = 500
+	for i in r.quarry.loot.size():
+		if str(r.quarry.loot[i]) == "exit":
+			var col := i % Quarry.COLS
+			for row in Quarry.ROWS:
+				var cell := r.quarry.index(col, row)
+				while not r.quarry.is_open(cell):
+					r.quarry.dig(cell, r)
+			break
+	r.quarry.descend(r)
+	_check(r.railway.tickets == tickets + 1, "dig layer gives a token")
+	var daily := ClickerState.new()
+	daily.claim_daily()
+	_check(daily.railway.tickets == 3 + ClickerState.DAILY_TICKETS, "daily reward gives tokens")
+	var rl := ClickerState.new()
+	rl.load_from_text(r.serialize())
+	_check(rl.railway.pos == r.railway.pos and rl.railway.laps == r.railway.laps and rl.railway.double_next == r.railway.double_next, "railway persisted")
+	_check(RailwayView.grid_of(0) == Vector2i(0, 0) and RailwayView.grid_of(6) == Vector2i(5, 1) and RailwayView.grid_of(10) == Vector2i(5, 5)
+			and RailwayView.grid_of(16) == Vector2i(0, 4) and RailwayView.grid_of(19) == Vector2i(0, 1), "board ring layout")
+	_set_noon()
+
+
 func _test_save_load() -> void:
 	# настоящее сохранение игрока прячем и возвращаем после теста
 	var backup := ""
@@ -832,7 +960,7 @@ func _test_save_load() -> void:
 	hostile.close()
 	var odd := ClickerState.new()
 	odd.load_save()
-	_check(odd.coins >= 0.0 and odd.expedition_type == -1, "hostile save sanitised")
+	_check(odd.coins >= 0.0 and odd.expeditions.is_empty(), "hostile save sanitised")
 	_check(odd.dynamite_stock >= 0 and odd.planet <= 100, "hostile save clamped")
 	# после сброса сохранение отключено
 	ClickerState.delete_save()

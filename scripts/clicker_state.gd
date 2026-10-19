@@ -75,6 +75,7 @@ const DYNAMITE_CAPS := [10, 20, 20, 20, 30]   # вместимость скла�
 const DYNAMITE_SECONDS := [30.0, 30.0, 38.0, 38.0, 38.0]
 const DYNAMITE_CHAIN := 0.3                # доля награды во втором взрыве (с 3-го уровня)
 const START_SKILL_POINTS := 2
+const DAILY_TICKETS := 2                  # жетоны узкоколейки к ежедневной награде
 ## Новые ветки навыков (по уровню 0…4): «Рука», «Походы», «Хранители», «Машины», «Смена».
 const HAND_PAYOUT := [1.0, 1.25, 1.25, 1.6, 2.0]       # монеты за глыбы от касаний
 const HAND_EXTRA := [0, 0, 1, 1, 2]                    # дополнительные глыбы за касание
@@ -127,8 +128,8 @@ var bosses_defeated := 0
 var achievements_claimed := {}            # id -> true
 var daily_day := -1                       # номер суток (UTC) последней полученной награды
 var daily_streak := 0
-var expedition_type := -1                 # -1 — нет похода
-var expedition_end := 0.0                 # unix-время конца похода
+var expeditions: Array = []               # идущие походы: {type, rarity, end (unix-время конца)}
+var expedition_offers: Array = []         # доска предложений: {type, rarity}
 var tutorial_done := false
 var hints_seen := {}                      # id подсказки -> true
 var planet := 0
@@ -148,6 +149,8 @@ var mini_cooldown := 0.0
 var skill_points_bought := 0         # купленные за алмазы очки навыков (цена растёт)
 var styles_bought: Array = []        # индексы пород, купленных за алмазы
 var quarry := Quarry.new()           # «Забой», «Старьёвщик», «Наряд дня» (quarry.gd)
+var workshop := Workshop.new()       # «Мастерская»: исследования за монеты и время (workshop.gd)
+var railway := Railway.new()         # «Узкоколейка»: поле-кольцо с кубиком и жетонами (railway.gd)
 var rush_ready_at := 0.0            # unix-время, когда лихорадку за алмазы можно купить снова
 var boost_time := 0.0             # «Золотая лихорадка»: сколько секунд осталось (не сохраняется)
 
@@ -257,7 +260,7 @@ func relic_chance() -> float:
 
 ## Прибавка к добыче похода: мета «Снаряжение походов» и навык «Походы».
 func expedition_bonus() -> float:
-	return 1.0 + 0.5 * int(meta["expedition"]) + float(TRIPS_LOOT[skill_level("trips")])
+	return 1.0 + 0.5 * int(meta["expedition"]) + float(TRIPS_LOOT[skill_level("trips")]) + 0.1 * workshop.level("guides")
 
 
 ## Наибольшая ценность руды (глыба даёт от 1 до этого числа).
@@ -267,7 +270,7 @@ func max_face() -> int:
 
 ## Множитель добычи: улучшение «Добыча», бонус зоны и «Золотая лихорадка» (×7 после касания золотой глыбы).
 func multiplier() -> float:
-	return pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0)
+	return workshop.income_factor() * pow(1.5, levels["mult"]) * Biomes.factor(total_earned, planet_scale()) * vein_multiplier() * collection_multiplier() * (1.0 + 0.2 * int(meta["income"])) * float(YIELD_BONUS[skill_level("yield")]) * (boost_factor if boost_time > 0.0 else 1.0)
 
 
 ## Шанс критического обвала и удвоения (улучшения «Критический обвал» и «Двойной улов»).
@@ -449,7 +452,7 @@ func respec() -> void:
 
 
 func dynamite_max() -> int:
-	return int(DYNAMITE_CAPS[skill_level("dynamite")]) + int(float(Machines.data("burner")["step"]) * machine_level("burner") + 0.01)
+	return int(DYNAMITE_CAPS[skill_level("dynamite")]) + int(float(Machines.data("burner")["step"]) * machine_level("burner") + 0.01) + 2 * workshop.level("powder")
 
 
 ## Кладёт динамит на склад (на Титане выдаётся на 50% больше, сверх вместимости не берётся). Возвращает, сколько добавлено.
@@ -646,6 +649,10 @@ func achievement_value(achievement: Dictionary) -> float:
 			return float(relic_kinds())
 		"quarry":
 			return float(quarry.best_layer)
+		"rail":
+			return float(railway.laps)
+		"research":
+			return float(workshop.total_levels())
 	return 0.0
 
 
@@ -738,43 +745,168 @@ func claim_daily() -> Dictionary:
 		result["points"] = int(reward["points"])
 	if reward.has("dynamite"):
 		result["dynamite"] = add_dynamite(int(reward["dynamite"]))
+	railway.tickets += DAILY_TICKETS
+	result["tickets"] = DAILY_TICKETS
 	return result
 
 
 # ---------- Экспедиции ----------
+# Несколько походов одновременно (слоты открываются зонами), каждый — тип (длительность) и редкость (множитель добычи).
+# Начинать можно любой из трёх «предложений» (доска найма): взятое предложение сменяется новым.
+
+## Исследования, которые меняют забой: время кирки и склад.
+func apply_research() -> void:
+	quarry.pick_seconds = Quarry.PICK_SECONDS - 60.0 * workshop.level("forge")
+	quarry.pick_cap = Quarry.PICK_CAP + 6 * workshop.level("rack")
+
+
+## Множитель наград узкоколейки (исследование «Новые рельсы»).
+func rail_factor() -> float:
+	return 1.0 + 0.1 * workshop.level("rails")
+
+
+## Готовое исследование: уровень +1 и пересчёт эффектов. Возвращает id ("" — нечего забирать).
+func finish_research() -> String:
+	var id := workshop.finish(now())
+	if id != "":
+		apply_research()
+		quarry.note("research")
+	return id
+
+
+func expedition_slots() -> int:
+	var zone := Biomes.index_for(total_earned, planet_scale())
+	if planet > 0:
+		return 3
+	return 1 + (1 if zone >= 2 else 0) + (1 if zone >= 4 else 0)
+
 
 func expedition_active() -> bool:
-	return expedition_type >= 0
+	return not expeditions.is_empty()
 
 
-func expedition_remaining() -> float:
-	if not expedition_active():
+## Осталось до конца похода в слоте (slot = -1: ближайший к концу). Откат часов не растягивает поход дольше его длительности.
+func expedition_remaining(slot := -1) -> float:
+	if expeditions.is_empty():
 		return 0.0
-	var total := expedition_total_seconds(expedition_type)
-	return clampf(expedition_end - now(), 0.0, total)       # откат часов не растягивает поход дольше его длительности
+	if slot < 0:
+		var best := INF
+		for i in expeditions.size():
+			best = minf(best, expedition_remaining(i))
+		return best
+	if slot >= expeditions.size():
+		return 0.0
+	var trip: Dictionary = expeditions[slot]
+	return clampf(float(trip["end"]) - now(), 0.0, expedition_total_seconds(int(trip["type"])))
 
 
-func expedition_ready() -> bool:
-	return expedition_active() and expedition_remaining() <= 0.0
-
-
-func start_expedition(index: int) -> bool:
-	if expedition_active() or index < 0 or index >= Retention.EXPEDITIONS.size():
+## Поход в слоте вернулся (slot = -1: хоть один).
+func expedition_ready(slot := -1) -> bool:
+	if slot < 0:
+		for i in expeditions.size():
+			if expedition_remaining(i) <= 0.0:
+				return true
 		return false
-	expedition_type = index
-	expedition_end = now() + expedition_total_seconds(index)
+	return slot < expeditions.size() and expedition_remaining(slot) <= 0.0
+
+
+## Слот ближайшего к концу ещё идущего похода (-1, если таких нет): его ускоряют реклама и алмазы.
+func expedition_soonest_running() -> int:
+	var best := -1
+	for i in expeditions.size():
+		if expedition_remaining(i) > 0.0 and (best < 0 or expedition_remaining(i) < expedition_remaining(best)):
+			best = i
+	return best
+
+
+## Сдвигает конец идущего похода (ускорение): seconds = INF — сразу.
+func expedition_hurry(seconds: float) -> bool:
+	var slot := expedition_soonest_running()
+	if slot < 0:
+		return false
+	var trip: Dictionary = expeditions[slot]
+	trip["end"] = now() if seconds == INF else float(trip["end"]) - seconds
 	return true
 
 
-## Забирает добычу похода: монеты от дохода, алмазы, находки в журнал. Возвращает итог для окна.
-func claim_expedition() -> Dictionary:
-	if not expedition_ready():
+## Начинает поход типа index (редкость rarity), если есть свободный слот.
+func start_expedition(index: int, rarity := 0) -> bool:
+	if expeditions.size() >= expedition_slots() or index < 0 or index >= Retention.EXPEDITIONS.size():
+		return false
+	expeditions.append({"type": index, "rarity": clampi(rarity, 0, Retention.RARITIES.size() - 1),
+			"end": now() + expedition_total_seconds(index)})
+	return true
+
+
+# ----- доска предложений -----
+
+## Веса редкостей: «Карты подземелий» (исследование) сдвигают их к редким.
+func rarity_weights() -> Array:
+	var shift := workshop.level("maps")
+	var weights: Array = []
+	for r in Retention.RARITIES.size():
+		weights.append(float(Retention.RARITIES[r]["weight"]) + float(Retention.RARITY_SHIFT[r]) * shift)
+	return weights
+
+
+func _roll_offer(rng: RandomNumberGenerator) -> Dictionary:
+	var weights := rarity_weights()
+	var total := 0.0
+	for w in weights:
+		total += float(w)
+	var roll := rng.randf() * total
+	var rarity := 0
+	for r in weights.size():
+		roll -= float(weights[r])
+		if roll < 0.0:
+			rarity = r
+			break
+	return {"type": rng.randi_range(0, Retention.EXPEDITIONS.size() - 1), "rarity": rarity}
+
+
+## Доска всегда полна: три предложения.
+func ensure_offers() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	while expedition_offers.size() < Retention.OFFER_COUNT:
+		expedition_offers.append(_roll_offer(rng))
+
+
+func start_offer(offer: int) -> bool:
+	ensure_offers()
+	if offer < 0 or offer >= expedition_offers.size():
+		return false
+	var entry: Dictionary = expedition_offers[offer]
+	if not start_expedition(int(entry["type"]), int(entry["rarity"])):
+		return false
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	expedition_offers[offer] = _roll_offer(rng)
+	return true
+
+
+## Новые предложения (за алмазы или рекламу).
+func reroll_offers() -> void:
+	expedition_offers.clear()
+	ensure_offers()
+
+
+## Забирает добычу вернувшегося похода (slot = -1: первого готового): монеты от дохода, алмазы, находки, жетоны.
+func claim_expedition(slot := -1) -> Dictionary:
+	if slot < 0:
+		for i in expeditions.size():
+			if expedition_ready(i):
+				slot = i
+				break
+	if slot < 0 or not expedition_ready(slot):
 		return {}
-	var data: Dictionary = Retention.EXPEDITIONS[expedition_type]
-	var bonus := expedition_bonus()
+	var trip: Dictionary = expeditions[slot]
+	var data: Dictionary = Retention.EXPEDITIONS[int(trip["type"])]
+	var rarity: Dictionary = Retention.RARITIES[int(trip["rarity"])]
+	var bonus := expedition_bonus() * float(rarity["loot"])
 	var coins_reward := maxf(100.0, income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
 	add_coins(coins_reward)
-	var diamonds_reward := int(round(float(data["diamonds"]) * bonus))
+	var diamonds_reward := int(round(float(data["diamonds"]) * bonus)) + int(rarity.get("diamonds", 0))
 	diamonds += diamonds_reward
 	var dynamite_reward := add_dynamite(int(data.get("dynamite", 0)))
 	var found := {1: 0, 2: 0, 3: 0, 4: 0}
@@ -794,14 +926,16 @@ func claim_expedition() -> Dictionary:
 				break
 		finds[ore] = int(finds[ore]) + 1
 		found[ore] = int(found[ore]) + 1
-	expedition_type = -1
-	expedition_end = 0.0
+	expeditions.remove_at(slot)
 	quarry.note("expedition")
+	var tickets := int(rarity["tickets"])
+	railway.tickets += tickets
 	var relic := ""
-	if rng.randf() < relic_chance():
+	if rng.randf() < maxf(relic_chance(), float(rarity["relic"])):
 		relic = str(RELICS[rng.randi() % RELICS.size()])
 		relics[relic] = int(relics[relic]) + 1
-	return {"coins": coins_reward, "diamonds": diamonds_reward, "dynamite": dynamite_reward, "found": found, "relic": relic}
+	return {"coins": coins_reward, "diamonds": diamonds_reward, "dynamite": dynamite_reward, "found": found, "relic": relic,
+			"rarity": int(trip["rarity"]), "tickets": tickets}
 
 
 ## Сколько разных диковинок найдено (для достижения «Коллекционер»).
@@ -815,7 +949,7 @@ func relic_kinds() -> int:
 
 ## Есть что забрать или потратить: журнал в шапке подсвечивается.
 func needs_attention() -> bool:
-	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready() or quarry.rush_any_claimable()
+	return skill_points > 0 or claimable_achievements() > 0 or expedition_ready() or planet_ready() or quarry.rush_any_claimable() or workshop.ready(now())
 
 
 ## Подсказка показывается один раз: возвращает true, если это первый раз (и запоминает).
@@ -1025,8 +1159,13 @@ func shop_cost(item: String) -> int:
 			return 6 + 3 * zone
 		"skill_point":
 			return 20 + 10 * skill_points_bought
+		"trip_offers":
+			return 2 * (1 + zone)
+		"research_skip":
+			return workshop.hurry_cost(now())
 		"expedition_skip":
-			return maxi(2, 2 * ceili(expedition_remaining() / 3600.0))
+			var running := expedition_soonest_running()
+			return maxi(2, 2 * ceili((expedition_remaining(running) if running >= 0 else 0.0) / 3600.0))
 	return 5 * (1 + zone)
 
 
@@ -1042,7 +1181,9 @@ func shop_available(item: String) -> bool:
 		"boss":
 			return Biomes.index_for(total_earned, planet_scale()) >= 1
 		"expedition_skip":
-			return expedition_active() and not expedition_ready()
+			return expedition_soonest_running() >= 0
+		"research_skip":
+			return workshop.busy() and not workshop.ready(now())
 	return true
 
 
@@ -1100,7 +1241,7 @@ func serialize() -> String:
 	var finds_out := {}
 	for ore in ORES:
 		finds_out[str(ore)] = int(finds[ore])
-	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expedition_type": expedition_type, "expedition_end": expedition_end, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "last_seen": now()}
+	var data := {"coins": coins, "total_earned": total_earned, "ending_seen": ending_seen, "veins": veins, "prestiges": prestiges, "planet": planet, "stardust": stardust, "meta": meta, "play_seconds": play_seconds, "rocks_broken": rocks_broken, "lifetime_earned": lifetime_earned, "diamonds": diamonds, "tutorial_done": tutorial_done, "hints": hints_seen.keys(), "finds": finds_out, "skill_points": skill_points, "skills": skills, "golden_caught": golden_caught, "relics": relics, "dynamite_used": dynamite_used, "dynamite_stock": dynamite_stock, "dynamite_zone_best": dynamite_zone_best, "bosses_defeated": bosses_defeated, "achievements": achievements_claimed.keys(), "daily_day": daily_day, "daily_streak": daily_streak, "expeditions": expeditions, "expedition_offers": expedition_offers, "auto_throw": auto_throw, "autobuy_on": autobuy_on, "ads_removed": ads_removed, "rush_ready_at": rush_ready_at, "skill_points_bought": skill_points_bought, "styles_bought": styles_bought, "ads_watched": ads_watched, "ad_ready_at": ad_ready_at, "levels": levels, "upgrades_unlocked": upgrades_unlocked.keys(), "dynamo_progress": dynamo_progress, "machines": machines, "machines_unlocked": machines_unlocked.keys(), "lab_progress": lab_progress, "quarry": quarry.to_dict(), "workshop": workshop.to_dict(), "railway": railway.to_dict(), "last_seen": now()}
 	var payload := JSON.stringify(data)
 	return JSON.stringify({"v": 2, "payload": payload, "sig": _sign(payload)})
 
@@ -1155,6 +1296,19 @@ static func _parse_save_text(text: String) -> Dictionary:
 		return {}
 	inner["_tampered"] = str(parsed.get("sig", "")) != _sign(payload)
 	return inner
+
+
+## Поход или предложение из сохранения: {} — мусор.
+static func _sanitize_trip(value) -> Dictionary:
+	if typeof(value) != TYPE_DICTIONARY:
+		return {}
+	var kind := int(_num(value.get("type"), -1.0))
+	if kind < 0 or kind >= Retention.EXPEDITIONS.size():
+		return {}
+	var entry := {"type": kind, "rarity": clampi(int(_num(value.get("rarity"), 0.0)), 0, Retention.RARITIES.size() - 1)}
+	if value.has("end"):
+		entry["end"] = _num(value.get("end"), 0.0)
+	return entry
 
 
 static func _as_dict(value) -> Dictionary:
@@ -1229,10 +1383,19 @@ func _apply_save(data: Dictionary) -> float:
 		achievements_claimed[str(id)] = true
 	daily_day = int(_num(data.get("daily_day"), -1.0))
 	daily_streak = _count(data.get("daily_streak"), 0)
-	expedition_type = int(_num(data.get("expedition_type"), -1.0))
-	if expedition_type < 0 or expedition_type >= Retention.EXPEDITIONS.size():
-		expedition_type = -1
-	expedition_end = _num(data.get("expedition_end"), 0.0)
+	expeditions = []
+	for trip in _as_array(data.get("expeditions")):
+		var entry := _sanitize_trip(trip)
+		if not entry.is_empty() and entry.has("end") and expeditions.size() < 3:
+			expeditions.append(entry)
+	var old_type := int(_num(data.get("expedition_type"), -1.0))       # сохранения до доски предложений: один поход
+	if not data.has("expeditions") and old_type >= 0 and old_type < Retention.EXPEDITIONS.size():
+		expeditions.append({"type": old_type, "rarity": 0, "end": _num(data.get("expedition_end"), 0.0)})
+	expedition_offers = []
+	for offer in _as_array(data.get("expedition_offers")):
+		var entry := _sanitize_trip(offer)
+		if not entry.is_empty() and expedition_offers.size() < Retention.OFFER_COUNT:
+			expedition_offers.append({"type": entry["type"], "rarity": entry["rarity"]})
 	var saved_skills := _as_dict(data.get("skills"))
 	for branch in skills:
 		skills[branch] = clampi(int(_num(saved_skills.get(branch), 0.0)), 0, Skills.MAX_LEVEL)
@@ -1272,6 +1435,9 @@ func _apply_save(data: Dictionary) -> float:
 			machines_unlocked[str(id)] = true
 	dynamite_zone_best = _count(data.get("dynamite_zone_best"), Biomes.index_for(total_earned, planet_scale()), 1000)
 	quarry.from_dict(_as_dict(data.get("quarry")))
+	workshop.from_dict(_as_dict(data.get("workshop")))
+	railway.from_dict(_as_dict(data.get("railway")))
+	apply_research()
 	quarry.tick_picks(now())
 	update_machine_unlocks()
 	var gone := maxf(0.0, now() - _num(data.get("last_seen"), 0.0))

@@ -16,6 +16,16 @@ const EXPEDITIONS := [
 ]
 const FIND_WEIGHTS := [50, 30, 15, 5]       # медь, железо, золото, алмаз в добыче экспедиции
 
+## Редкость похода на доске предложений: вес выпадения, множитель добычи, прибавка алмазов, шанс диковинки, жетоны узкоколейки.
+const RARITIES := [
+	{"name": "Обычный", "weight": 55, "loot": 1.0, "diamonds": 0, "relic": 0.0, "tickets": 1},
+	{"name": "Редкий", "weight": 30, "loot": 1.6, "diamonds": 1, "relic": 0.15, "tickets": 2},
+	{"name": "Ценный", "weight": 12, "loot": 2.5, "diamonds": 3, "relic": 0.4, "tickets": 3},
+	{"name": "Легендарный", "weight": 3, "loot": 4.0, "diamonds": 8, "relic": 1.0, "tickets": 5},
+]
+const RARITY_SHIFT := [-6, 3, 2, 1]          # сдвиг весов за уровень исследования «Карты подземелий»
+const OFFER_COUNT := 3
+
 ## Достижения: kind — что считаем, goal — порог, reward — diamonds / points / style (индекс породы).
 const ACHIEVEMENTS := [
 	{"id": "zone1", "name": "Сто метров", "text": "Дойти до Медных пещер", "kind": "zone", "goal": 1, "reward": {"diamonds": 1}},
@@ -38,5 +48,7 @@ const ACHIEVEMENTS := [
 	{"id": "meta5", "name": "Старый колонист", "text": "Купить 5 уровней мета-улучшений", "kind": "meta", "goal": 5, "reward": {"diamonds": 10, "points": 2}},
 	{"id": "relics4", "name": "Коллекционер", "text": "Собрать все четыре диковинки из экспедиций", "kind": "relics", "goal": 4, "reward": {"diamonds": 3, "points": 1}},
 	{"id": "quarry10", "name": "Глубокий забой", "text": "Спуститься в забое на 10-й ярус", "kind": "quarry", "goal": 10, "reward": {"diamonds": 5, "points": 1}},
+	{"id": "rail10", "name": "Машинист", "text": "Проехать 10 кругов по узкоколейке", "kind": "rail", "goal": 10, "reward": {"diamonds": 5, "points": 1}},
+	{"id": "research10", "name": "Инженер", "text": "Изучить 10 уровней в мастерской", "kind": "research", "goal": 10, "reward": {"diamonds": 8, "points": 1}},
 	{"id": "set1", "name": "Полный набор", "text": "Довести все руды до уровня 1", "kind": "set", "goal": 1, "reward": {"diamonds": 3}},
 ]

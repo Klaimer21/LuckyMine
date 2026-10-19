@@ -61,7 +61,7 @@ func _screens(language: String) -> void:
 	await _wait(0.5)
 
 	state.start_expedition(1)
-	for tab in 6:
+	for tab in 7:
 		_main._journal._tab = tab
 		_main._journal.open()
 		await _wait(0.4)
@@ -71,7 +71,7 @@ func _screens(language: String) -> void:
 	await _wait(0.4)
 	await _check(language, "настройки")
 	_main._settings_screen.visible = false
-	state.expedition_type = -1
+	state.expeditions.clear()
 
 	var dialogs := {
 		"ежедневная награда": func() -> void: _main._info.show_daily(),

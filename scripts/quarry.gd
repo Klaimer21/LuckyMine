@@ -30,19 +30,20 @@ const JUNK_GOODS := {
 	"coins": {"min": 1, "max": 3, "step": 1, "unit": 3.0, "weight": 20},
 	"rush": {"min": 1, "max": 1, "step": 1, "unit": 5.0, "weight": 7},
 	"skill_point": {"min": 1, "max": 1, "step": 1, "unit": 12.0, "weight": 3},
+	"tickets": {"min": 2, "max": 4, "step": 1, "unit": 1.2, "weight": 15},
 }
 const JUNK_SLOTS := 4
 const JUNK_DISCOUNTS := [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35]
 
 ## Наряд дня: очки за действие; тема дня (понедельник = 0) утраивает очки своих действий, воскресенье удваивает все.
-const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10}
+const RUSH_POINTS := {"pick": 2, "dynamite": 5, "golden": 10, "boss": 20, "expedition": 15, "junk": 5, "layer": 10, "cart": 4, "research": 15}
 const RUSH_THEMES := [
 	{"name": "День кирки", "actions": ["pick", "layer"]},
 	{"name": "День подрывника", "actions": ["dynamite"]},
 	{"name": "Золотая среда", "actions": ["golden"]},
 	{"name": "День хранителя", "actions": ["boss"]},
 	{"name": "День походов", "actions": ["expedition"]},
-	{"name": "Базарный день", "actions": ["junk", "pick"]},
+	{"name": "Базарный день", "actions": ["junk", "cart", "research"]},
 	{"name": "Воскресный аврал", "actions": []},
 ]
 const RUSH_THEME_FACTOR := 3
@@ -50,6 +51,8 @@ const RUSH_SUNDAY_FACTOR := 2
 const RUSH_GOALS := [60, 150, 300]
 
 var picks := START_PICKS
+var pick_seconds := PICK_SECONDS         # с исследованиями «Кузница кирок» и «Стойка для кирок» (ClickerState.apply_research)
+var pick_cap := PICK_CAP
 var pick_clock := 0.0                    # unix-время, от которого считается следующая кирка
 var layer := 1
 var best_layer := 1
@@ -79,21 +82,21 @@ func _init() -> void:
 func tick_picks(now: float) -> void:
 	if pick_clock <= 0.0 or now < pick_clock:
 		pick_clock = now
-	if picks >= PICK_CAP:
+	if picks >= pick_cap:
 		pick_clock = now
 		return
-	var gained := floori((now - pick_clock) / PICK_SECONDS)
+	var gained := floori((now - pick_clock) / pick_seconds)
 	if gained <= 0:
 		return
-	picks = mini(PICK_CAP, picks + gained)
-	pick_clock = now if picks >= PICK_CAP else pick_clock + gained * PICK_SECONDS
+	picks = mini(pick_cap, picks + gained)
+	pick_clock = now if picks >= pick_cap else pick_clock + gained * pick_seconds
 
 
 ## Секунд до следующей кирки (0, если склад полон).
 func pick_wait(now: float) -> float:
-	if picks >= PICK_CAP:
+	if picks >= pick_cap:
 		return 0.0
-	return clampf(pick_clock + PICK_SECONDS - now, 0.0, PICK_SECONDS)
+	return clampf(pick_clock + pick_seconds - now, 0.0, pick_seconds)
 
 
 # ---------- Забой ----------
@@ -231,7 +234,8 @@ func descend(s: ClickerState) -> Dictionary:
 	best_layer = maxi(best_layer, layer)
 	note("layer")
 	new_layer()
-	var result := {"layer": layer}
+	s.railway.tickets += 1
+	var result := {"layer": layer, "tickets": 1}
 	if layer % CHEST_EVERY == 0:
 		result.merge(grant("chest", s))
 	return result
@@ -334,6 +338,8 @@ func junk_buy(slot: int, s: ClickerState) -> Dictionary:
 			s.start_rush(ClickerState.RUSH_LONG_SECONDS)
 		"skill_point":
 			s.skill_points += count
+		"tickets":
+			s.railway.tickets += count
 	s.diamonds -= price
 	entry["sold"] = true
 	note("junk")
@@ -399,7 +405,8 @@ func rush_claim(step: int, s: ClickerState) -> Dictionary:
 		return {}
 	rush_claimed |= 1 << step
 	var zone := Biomes.index_for(s.total_earned, s.planet_scale())
-	var result := {}
+	s.railway.tickets += step + 1
+	var result := {"tickets": step + 1}
 	match step:
 		0:
 			picks += 5

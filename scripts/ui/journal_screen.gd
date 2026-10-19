@@ -8,7 +8,7 @@ signal purchase(item: String)
 signal skill_purchase(branch: String)
 signal respec_requested
 signal expedition_start(index: int)
-signal expedition_claim
+signal expedition_claim(slot: int)
 signal achievement_claim(id: String)
 signal achievement_claim_all
 signal ad_requested(placement: String)
@@ -19,6 +19,9 @@ signal quarry_descend
 signal junk_buy(slot: int)
 signal junk_reroll
 signal rush_claim(step: int)
+signal research_start(id: String)
+signal research_claim
+signal cart_roll
 
 const ORE_NAMES := {1: "Медь", 2: "Железо", 3: "Золото", 4: "Алмаз"}
 ## Пиксельные значки предметов: магазин и реклама (по ключу покупки), достижения (по виду счётчика), экспедиции.
@@ -29,9 +32,8 @@ const SHOP_ICONS := {
 const ACHIEVEMENT_ICONS := {
 	"zone": "px_map", "prestige": "px_hourglass", "gold": "px_bag", "diamond": "gem", "golden": "px_crown", "dynamite": "px_bomb",
 	"boss": "px_shield", "planet": "px_rocket", "rocks": "px_hammer", "meta": "px_key", "set": "px_trophy",
-	"quarry": "px_pickaxe",
+	"quarry": "px_pickaxe", "rail": "rail_minecart", "research": "px_gear",
 }
-const TRIP_ICONS := ["trip_scout", "trip_descent", "trip_deep"]
 const ORE_ICONS := {1: "ore_copper", 2: "ore_iron", 3: "ore_gold", 4: "ore_diamond"}
 const ORE_COLORS := {1: Color(0.78, 0.47, 0.30), 2: Color(0.50, 0.58, 0.68), 3: Color(0.92, 0.74, 0.32),
 		4: Color(0.55, 0.86, 0.90)}
@@ -39,10 +41,10 @@ const ORE_COLORS := {1: Color(0.78, 0.47, 0.30), 2: Color(0.50, 0.58, 0.68), 3: 
 var state: ClickerState
 var _content: VBoxContainer
 var _tab := 0                       # 0 — руда, 1 — навыки, 2 — походы, 3 — награды, 4 — планета, 5 — лавка, 6 — забой
-var _expedition_label: Label
-var _expedition_bar: ProgressBar
 var _pick_timer: Label
-var _was_ready := false
+var _dig_mode := 0                  # вкладка «Забой»: 0 — поле глыб, 1 — узкоколейка
+var _updaters: Array = []           # таймеры вкладки «Походы» (обновляются без перестройки)
+var _trip_signature := ""           # что готово во вкладке «Походы»: изменилось — перестроить
 var _fade_next := false             # следующая перерисовка — смена вкладки: короткое проявление
 var _tick := 0.0
 
@@ -112,17 +114,17 @@ func rebuild() -> void:
 				_fade_next = true
 				rebuild())
 		tabs.add_child(tab_button)
-	_expedition_label = null
-	_expedition_bar = null
 	_pick_timer = null
+	_updaters = []
 	if _tab == 6:
-		_pick_timer = QuarryView.build_dig(_content, state, self)
+		_build_dig_tab()
 		return
 	if _tab == 1:
 		_build_skills()
 		return
 	if _tab == 2:
-		_build_expeditions()
+		_trip_signature = _trip_state()
+		TripView.build(_content, state, self, _updaters)
 		return
 	if _tab == 3:
 		_build_achievements()
@@ -227,21 +229,50 @@ func _process(delta: float) -> void:
 		return
 	_tick = 0.0
 	if _tab == 6:
-		if _pick_timer != null:
+		if _pick_timer != null and _dig_mode == 0:
 			var before := state.quarry.picks
 			QuarryView.update_timer(_pick_timer, state)
 			if state.quarry.picks != before:
 				rebuild()
 		return
-	var finished := state.expedition_ready()
-	if finished != _was_ready:
+	if _trip_state() != _trip_signature:
 		rebuild()
 		return
-	if _expedition_label != null and state.expedition_active() and not finished:
-		var remaining := state.expedition_remaining()
-		_expedition_label.text = Tr.t("Осталось: %s") % _format_time(remaining)
-		var total: float = state.expedition_total_seconds(state.expedition_type)
-		_expedition_bar.value = 1.0 - remaining / total
+	for update in _updaters:
+		(update as Callable).call()
+
+
+## Что во вкладке «Походы» готово к получению: смена этой строки перестраивает вкладку (кнопки «Забрать»).
+func _trip_state() -> String:
+	var parts: Array[String] = []
+	for slot in state.expeditions.size():
+		parts.append("1" if state.expedition_ready(slot) else "0")
+	parts.append("r" if state.workshop.ready(ClickerState.now()) else "-")
+	return "".join(parts)
+
+
+## Вкладка «Забой»: переключатель «Забой» / «Узкоколейка».
+func _build_dig_tab() -> void:
+	var modes := HBoxContainer.new()
+	modes.add_theme_constant_override("separation", 8)
+	_content.add_child(modes)
+	var names := [Tr.t("Забой"), Tr.t("Узкоколейка") + "  %d" % state.railway.tickets]
+	for mode in names.size():
+		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _dig_mode else "dark")
+		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		key.custom_minimum_size.y = 84
+		key.pressed.connect(func() -> void:
+				_dig_mode = mode
+				_fade_next = true
+				rebuild())
+		modes.add_child(key)
+	if _dig_mode == 0:
+		_pick_timer = QuarryView.build_dig(_content, state, self)
+		return
+	var note := UiTheme.make_text("Жетон — один бросок кубика: вагонетка едет по рельсам и забирает добычу клетки. Через депо — круг и награда. Жетоны дают ярусы забоя, походы, хранители, наряд дня и ежедневная награда.", 22, UiTheme.MUTE)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(note)
+	_content.add_child(RailwayView.new().setup(state, self, 1024.0))
 
 
 static func _format_time(seconds: float) -> String:
@@ -251,99 +282,6 @@ static func _format_time(seconds: float) -> String:
 	if hours > 0:
 		return "%d:%02d:%02d" % [hours, minutes, total % 60]
 	return "%d:%02d" % [minutes, total % 60]
-
-
-## Длительность похода в часах: целая или с десятой долей, если Лебёдка сократила поход.
-func _hours_text(hours: float) -> String:
-	if is_equal_approx(hours, roundf(hours)):
-		return Tr.t("%d ч") % int(hours)
-	return Tr.t("%s ч") % ("%.1f" % hours)
-
-
-## Ожидаемая добыча похода (с бонусом мета-улучшения «Снаряжение походов»), как её выдаст claim_expedition().
-func _expedition_loot(data: Dictionary) -> String:
-	var bonus := state.expedition_bonus()
-	var coins := maxf(100.0, state.income_per_second() * float(data["hours"]) * 3600.0 * float(data["coins"])) * bonus
-	return Tr.fmt("≈%s монет · %d алмазов · %d находок", [NumberFormat.short(coins),
-			int(round(float(data["diamonds"]) * bonus)), int(round(float(data["finds"]) * bonus))])
-
-
-## Вкладка «Походы»: один поход за раз; идёт и по реальному времени (в том числе когда игра закрыта).
-func _build_expeditions() -> void:
-	var note := UiTheme.make_text("Шахтёры уходят в поход и возвращаются с добычей: монеты, алмазы и находки в журнал.", 26, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_content.add_child(note)
-	_was_ready = state.expedition_ready()
-	if state.expedition_active():
-		var data: Dictionary = Retention.EXPEDITIONS[state.expedition_type]
-		var card := _card()
-		var column := VBoxContainer.new()
-		column.add_theme_constant_override("separation", UiTheme.SPACE_S)
-		card.add_child(column)
-		var head := HBoxContainer.new()
-		head.add_theme_constant_override("separation", 16)
-		head.add_child(_item_icon(TRIP_ICONS[mini(state.expedition_type, TRIP_ICONS.size() - 1)], 1.0, 96.0))
-		head.add_child(UiTheme.make_label(data["name"], 38, UiTheme.TEXT, true))
-		column.add_child(head)
-		if _was_ready:
-			column.add_child(UiTheme.make_label("Шахтёры вернулись!", 30, UiTheme.BRASS))
-			var claim := UiTheme.make_key("Забрать добычу", 34, "brass")
-			claim.custom_minimum_size.y = 90
-			claim.pressed.connect(func() -> void:
-					expedition_claim.emit()
-					rebuild())
-			column.add_child(claim)
-		else:
-			_expedition_label = UiTheme.make_label("", 30, UiTheme.BRASS)
-			column.add_child(_expedition_label)
-			_expedition_bar = UiTheme.make_bar(0.0, UiTheme.BRASS, 12)
-			column.add_child(_expedition_bar)
-			var loot := UiTheme.make_text(Tr.t("Ожидается") + ": " + _expedition_loot(data), 26, UiTheme.MUTE)
-			loot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			column.add_child(loot)
-			var finish_now := UiTheme.make_key(Tr.t("Закончить за %d") % state.shop_cost("expedition_skip"), 28, "brass")
-			finish_now.custom_minimum_size.y = 76
-			# цена в алмазах: голубой алмаз с тёмным контуром сразу после числа (текст по центру кнопки)
-			var finish_gem := Icon.new().setup("gem", ORE_COLORS[4], 36)
-			finish_gem.outline = UiTheme.DARK_ON_BRASS
-			finish_now.add_child(finish_gem)
-			finish_now.resized.connect(func() -> void:
-					var font := finish_now.get_theme_font("font")
-					var text_width := font.get_string_size(finish_now.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x
-					finish_gem.position = Vector2(finish_now.size.x * 0.5 + text_width * 0.5 + 10.0, (finish_now.size.y - 7.0 - 36.0) * 0.5 + 2.0))
-			finish_now.disabled = state.diamonds < state.shop_cost("expedition_skip")
-			finish_now.pressed.connect(func() -> void:
-					purchase.emit("expedition_skip")
-					rebuild())
-			column.add_child(finish_now)
-			var skip := UiTheme.make_key("Минус 1 час (реклама)", 28, "felt")
-			skip.custom_minimum_size.y = 76
-			skip.pressed.connect(func() -> void: ad_requested.emit("expedition"))
-			column.add_child(skip)
-			_tick = 1.0
-		return
-	for i in Retention.EXPEDITIONS.size():
-		var data: Dictionary = Retention.EXPEDITIONS[i]
-		var card := _card()
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 16)
-		card.add_child(row)
-		row.add_child(_item_icon(TRIP_ICONS[mini(i, TRIP_ICONS.size() - 1)], 1.0, 96.0))
-		var texts := VBoxContainer.new()
-		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		texts.add_theme_constant_override("separation", 0)
-		row.add_child(texts)
-		texts.add_child(UiTheme.make_label(data["name"], 34, UiTheme.TEXT))
-		var detail := UiTheme.make_text(_hours_text(float(data["hours"]) * state.expedition_time_factor()) + " · " + _expedition_loot(data), 24, UiTheme.MUTE)
-		detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		texts.add_child(detail)
-		var go := UiTheme.make_key("Отправить", 28, "brass")
-		go.custom_minimum_size = Vector2(200, 80)
-		go.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		go.pressed.connect(func() -> void:
-				expedition_start.emit(i)
-				rebuild())
-		row.add_child(go)
 
 
 ## Вкладка «Награды»: достижения со шкалой и наградой; косметика (породы) открывается ими.

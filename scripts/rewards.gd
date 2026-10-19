@@ -42,14 +42,15 @@ func offline_doubled() -> bool:
 	return _offline_doubled
 
 
-func on_expedition_start(index: int) -> void:
-	if state.start_expedition(index):
+## Отправить поход по предложению с доски.
+func on_expedition_start(offer: int) -> void:
+	if state.start_offer(offer):
 		_sfx.play("tick", -4.0)
 		state.save()
 
 
-func on_expedition_claim() -> void:
-	var result := state.claim_expedition()
+func on_expedition_claim(slot: int) -> void:
+	var result := state.claim_expedition(slot)
 	if result.is_empty():
 		return
 	state.save()
@@ -60,11 +61,16 @@ func on_expedition_claim() -> void:
 		back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		modal.body.add_child(back)
 	modal.body.add_child(UiTheme.make_label("Экспедиция вернулась", 50, UiTheme.TEXT, true))
+	var rarity := int(result.get("rarity", 0))
+	if rarity > 0:
+		modal.body.add_child(UiTheme.make_label(Tr.t("Поход: %s") % Tr.t(str(Retention.RARITIES[rarity]["name"])), 30, TripView.RARITY_COLORS[rarity]))
 	modal.body.add_child(UiTheme.make_label(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])), 34, UiTheme.BRASS))
 	if int(result["diamonds"]) > 0:
 		modal.body.add_child(UiTheme.make_label(Tr.t("Алмазы: +%d") % int(result["diamonds"]), 34, UiTheme.TEXT))
 	if int(result["dynamite"]) > 0:
 		modal.body.add_child(UiTheme.make_label(Tr.t("Динамит +%d") % int(result["dynamite"]), 34, UiTheme.TEXT))
+	if int(result.get("tickets", 0)) > 0:
+		modal.body.add_child(UiTheme.make_label(Tr.t("Жетоны узкоколейки +%d") % int(result["tickets"]), 30, UiTheme.TEXT))
 	var found: Dictionary = result["found"]
 	var names := ["Медь", "Железо", "Золото", "Алмаз"]
 	var ore_icons := ["ore_copper", "ore_iron", "ore_gold", "ore_diamond"]
@@ -120,10 +126,19 @@ func grant_ad_reward(placement: String) -> void:
 			state.machine_boost_time = state.machine_boost_seconds()
 			_toast.call(Tr.t("Машины ×2 на 5 минут"))
 		"expedition":
-			if not state.expedition_active() or state.expedition_ready():
+			if not state.expedition_hurry(3600.0):
 				return
-			state.expedition_end -= 3600.0
 			_toast.call(Tr.t("Поход ускорен на 1 час"))
+		"trip_offers":
+			state.reroll_offers()
+			_toast.call(Tr.t("Новые предложения походов"))
+		"research":
+			if not state.workshop.hurry(Workshop.AD_HURRY):
+				return
+			_toast.call(Tr.t("Исследование ускорено на 30 минут"))
+		"tickets":
+			state.railway.tickets += Railway.AD_TICKETS
+			_toast.call(Tr.t("Жетоны узкоколейки +%d") % Railway.AD_TICKETS)
 		"picks":
 			state.quarry.picks += Quarry.AD_PICKS
 			_toast.call(Tr.t("Кирки +%d") % Quarry.AD_PICKS)
@@ -205,8 +220,14 @@ func on_shop_purchase(item: String) -> void:
 			state.diamonds -= cost
 		"expedition_skip":
 			state.diamonds -= cost
-			state.expedition_end = ClickerState.now()
+			state.expedition_hurry(INF)
 			_toast.call(Tr.t("Шахтёры вернулись!"))
+		"trip_offers":
+			state.diamonds -= cost
+			state.reroll_offers()
+		"research_skip":
+			state.diamonds -= cost
+			state.workshop.hurry(INF)
 		"skill_point":
 			state.diamonds -= cost
 			state.skill_points += 1
@@ -330,6 +351,45 @@ func on_rush_claim(step: int) -> void:
 	_sfx.play("claim", -4.0)
 	_settings.vibrate(30)
 	_toast.call(Tr.t("Сундук наряда") + ": " + _quarry_loot_text(result))
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+# ---------- Мастерская и узкоколейка ----------
+
+func on_research_start(id: String) -> void:
+	if not state.workshop.start(id, state):
+		return
+	_sfx.play("tick", -4.0)
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+func on_research_claim() -> void:
+	var id := state.finish_research()
+	if id == "":
+		return
+	_sfx.play("claim", -4.0)
+	_settings.vibrate(30)
+	var entry := Workshop.entry_of(id)
+	_toast.call(Tr.t("Исследование готово") + ": " + Tr.t(str(entry["name"])) + " " + Tr.t("ур. %d") % state.workshop.level(id))
+	_on_dynamite_changed.call()
+	state.save()
+	_refresh.call()
+	_rebuild_journal.call()
+
+
+## Бросок кубика: состояние меняется сразу, вагонетку по кольцу проводит интерфейс (railway.animate_pending).
+func on_cart_roll() -> void:
+	var result := state.railway.roll(state)
+	if result.is_empty():
+		return
+	_sfx.play("tick", -2.0)
+	_settings.vibrate(20)
+	if int(result.get("dynamite", 0)) > 0:
+		_on_dynamite_changed.call()
 	state.save()
 	_refresh.call()
 	_rebuild_journal.call()

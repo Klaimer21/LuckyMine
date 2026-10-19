@@ -15,6 +15,9 @@ const PLACEMENTS := {
 	"machines": {"cooldown": 1800.0},  # Дробилка и Подрывник ×2 на 5 минут
 	"picks": {"cooldown": 1800.0},     # кирки для забоя
 	"junk": {"cooldown": 14400.0},     # новый товар у старьёвщика
+	"tickets": {"cooldown": 3600.0},   # жетоны узкоколейки
+	"trip_offers": {"cooldown": 7200.0},  # новые предложения походов
+	"research": {"cooldown": 1800.0},  # исследование быстрее на 30 минут
 }
 
 var host: Control

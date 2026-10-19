@@ -545,6 +545,7 @@ func _on_boss_defeated(zone: int) -> void:
 	state.diamonds += gems
 	state.bosses_defeated += 1
 	state.quarry.note("boss")
+	state.railway.tickets += 1
 	_rewards.award_dynamite(2)
 	state.save()
 	_show_toast(Tr.fmt("Хранитель побеждён! +%d алмазов", [gems]))
@@ -670,6 +671,9 @@ func _build_ui() -> void:
 	_journal.junk_buy.connect(_rewards.on_junk_buy)
 	_journal.junk_reroll.connect(_rewards.on_junk_reroll)
 	_journal.rush_claim.connect(_rewards.on_rush_claim)
+	_journal.research_start.connect(_rewards.on_research_start)
+	_journal.research_claim.connect(_rewards.on_research_claim)
+	_journal.cart_roll.connect(_rewards.on_cart_roll)
 	_settings_screen = SettingsScreen.new()
 	_ui.add_child(_settings_screen)
 	_settings_screen.setup(settings, _table, state)
