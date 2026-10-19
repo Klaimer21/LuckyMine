@@ -94,12 +94,16 @@ func rebuild() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 8)
-	_content.add_child(tabs)
-	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка, 6 забой
+	# порядок на экране; номера вкладок (_tab) постоянные: 0 руда, 1 навыки, 2 походы, 3 награды, 4 планета, 5 лавка, 6 забой.
+	# Семь вкладок в один ряд не влезают на телефоне: два ряда (4 + 3).
 	var tab_list := [[0, "Руда"], [6, "Забой"], [5, "Лавка"], [1, "Навыки"], [2, "Походы"], [3, "Награды"], [4, "Планета"]]
-	for entry in tab_list:
+	var tabs: HBoxContainer
+	for index in tab_list.size():
+		if index % 4 == 0:
+			tabs = HBoxContainer.new()
+			tabs.add_theme_constant_override("separation", 8)
+			_content.add_child(tabs)
+		var entry: Array = tab_list[index]
 		var id: int = entry[0]
 		var tab_button := UiTheme.make_key(str(entry[1]), 21, "felt" if id == _tab else "dark")
 		if id != _tab:
@@ -108,7 +112,7 @@ func rebuild() -> void:
 				tab_button.add_theme_color_override(color_name, UiTheme.TEXT.darkened(0.25))
 		tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tab_button.clip_text = true
-		tab_button.custom_minimum_size = Vector2(0, 96)
+		tab_button.custom_minimum_size = Vector2(0, 84)
 		tab_button.pressed.connect(func() -> void:
 				_tab = id
 				_fade_next = true
