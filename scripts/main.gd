@@ -810,6 +810,7 @@ func _build_top() -> void:
 	_chest_button = UiTheme.icon_button("chest", Color.WHITE, 72, Vector2(120, 120))
 	_chest_button.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	_chest_button.visible = false
+	Juice.add_brackets(_chest_button)
 	_chest_button.pressed.connect(func() -> void: _rewards.open_lucky())
 	var chest_count := UiTheme.make_label("", 26, UiTheme.BRASS, true)
 	chest_count.name = "Count"
@@ -856,6 +857,16 @@ func _build_top() -> void:
 	_prestige_button.pressed.connect(_progression.show_prestige)
 	depth_row.add_child(_prestige_button)
 	_prestige_key = -1
+	_slide_in.call_deferred(margin, -260.0, 0.05)
+
+
+## Появление при запуске: шапка спускается сверху, нижняя панель поднимается снизу (с лёгким перелётом).
+func _slide_in(control: Control, from_y: float, delay: float) -> void:
+	var target := control.position.y
+	control.position.y = target + from_y
+	var tween := control.create_tween()
+	tween.tween_interval(delay)
+	tween.tween_property(control, "position:y", target, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _build_panel() -> void:
@@ -909,6 +920,7 @@ func _build_panel() -> void:
 	column.add_child(_upgrades_button)
 	_sheet.upgrades_button = _upgrades_button
 	_sheet.build(panel)
+	_slide_in.call_deferred(panel, 320.0, 0.12)
 
 
 ## Клавиша «Авто»: включена — глыбы падают сами (зелёная), выключена — тёмная.

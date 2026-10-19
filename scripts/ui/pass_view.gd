@@ -121,6 +121,8 @@ static func _reward_cell(state: ClickerState, journal: JournalScreen, track: Str
 	for state_name in ["normal", "hover", "pressed", "disabled", "focus"]:
 		button.add_theme_stylebox_override(state_name, style)
 	button.disabled = not ready
+	if ready:
+		Juice.add_brackets(button)
 	var row := HBoxContainer.new()
 	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 10

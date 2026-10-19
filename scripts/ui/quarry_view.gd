@@ -244,6 +244,8 @@ static func build_rush(parent: VBoxContainer, state: ClickerState, journal: Jour
 		key.custom_minimum_size.y = 96
 		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		key.disabled = not ready
+		if ready:
+			Juice.add_brackets(key)
 		var chest := Icon.new().setup("chest", Color(1, 1, 1, 0.4 if claimed else 1.0), 40)
 		chest.position = Vector2(12, 26)
 		key.add_child(chest)

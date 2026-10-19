@@ -135,6 +135,7 @@ static func _trip_card(parent: VBoxContainer, state: ClickerState, journal: Jour
 	texts.add_child(UiTheme.make_label(Tr.t(str(Retention.EXPEDITIONS[type]["name"])), 32, UiTheme.TEXT))
 	texts.add_child(rarity_badge(rarity))
 	if state.expedition_ready(slot):
+		Juice.add_brackets(card)
 		texts.add_child(UiTheme.make_label("Шахтёры вернулись!", 26, UiTheme.BRASS))
 		var claim := UiTheme.make_key("Забрать", 28, "brass")
 		claim.custom_minimum_size = Vector2(190, 84)
@@ -232,6 +233,7 @@ static func _build_workshop(parent: VBoxContainer, state: ClickerState, journal:
 			var claim := UiTheme.make_key("Готово: забрать", 30, "brass")
 			claim.custom_minimum_size.y = 88
 			claim.pressed.connect(func() -> void: journal.research_claim.emit())
+			Juice.add_brackets(claim)
 			column.add_child(claim)
 		else:
 			var timer := UiTheme.make_label("", 26, UiTheme.BRASS)

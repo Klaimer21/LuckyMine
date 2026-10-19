@@ -56,47 +56,21 @@ func on_expedition_claim(slot: int) -> void:
 		return
 	state.save()
 	_sfx.play("claim", -4.0)
-	var modal := Modal.new()
-	var back := Companion.portrait(240.0, "tired")
-	if back != null:
-		back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		modal.body.add_child(back)
-	modal.body.add_child(UiTheme.make_label("Экспедиция вернулась", 50, UiTheme.TEXT, true))
-	var rarity := int(result.get("rarity", 0))
-	if rarity > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Поход: %s") % Tr.t(str(Retention.RARITIES[rarity]["name"])), 30, TripView.RARITY_COLORS[rarity]))
-	modal.body.add_child(UiTheme.make_label(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])), 34, UiTheme.BRASS))
-	if int(result["diamonds"]) > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Алмазы: +%d") % int(result["diamonds"]), 34, UiTheme.TEXT))
-	if int(result["dynamite"]) > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Динамит +%d") % int(result["dynamite"]), 34, UiTheme.TEXT))
-	if int(result.get("tickets", 0)) > 0:
-		modal.body.add_child(UiTheme.make_label(Tr.t("Жетоны узкоколейки +%d") % int(result["tickets"]), 30, UiTheme.TEXT))
+	var items := Juice.items_from(result)
 	var found: Dictionary = result["found"]
 	var names := ["Медь", "Железо", "Золото", "Алмаз"]
 	var ore_icons := ["ore_copper", "ore_iron", "ore_gold", "ore_diamond"]
 	for ore in found:
 		if int(found[ore]) > 0:
-			var line := HBoxContainer.new()
-			line.add_theme_constant_override("separation", 12)
-			line.alignment = BoxContainer.ALIGNMENT_CENTER
-			line.add_child(Icon.new().setup(ore_icons[int(ore) - 1], Color.WHITE, 48))
-			line.add_child(UiTheme.make_label("%s: +%d" % [Tr.t(names[int(ore) - 1]), int(found[ore])], 28, UiTheme.MUTE))
-			modal.body.add_child(line)
-	# изредка шахтёры приносят диковинку: просто приятная картинка (в журнал и экономику не пишется)
+			items.append({"icon": ore_icons[int(ore) - 1], "count": "×%d" % int(found[ore]), "rarity": mini(int(ore) - 1, 3),
+					"name": Tr.t(names[int(ore) - 1])})
+	# изредка шахтёры приносят диковинку
 	if str(result.get("relic", "")) != "":
-		var relic: Array = [Relics.icon(str(result["relic"])), Relics.name_of(str(result["relic"]))]
-		modal.body.add_child(UiTheme.make_label("Шахтёры принесли диковинку", 26, UiTheme.BRASS))
-		var relic_row := HBoxContainer.new()
-		relic_row.add_theme_constant_override("separation", 12)
-		relic_row.alignment = BoxContainer.ALIGNMENT_CENTER
-		relic_row.add_child(Icon.new().setup(str(relic[0]), Color.WHITE, 96))
-		relic_row.add_child(UiTheme.make_label(str(relic[1]), 28, UiTheme.TEXT))
-		modal.body.add_child(relic_row)
-	var close := UiTheme.make_button("Закрыть", true, 34)
-	close.pressed.connect(modal.close)
-	modal.body.add_child(close)
-	host.add_child(modal)
+		items.append({"icon": Relics.icon(str(result["relic"])), "count": "", "rarity": 3, "name": Relics.name_of(str(result["relic"]))})
+	var rarity := int(result.get("rarity", 0))
+	var subtitle := Tr.t("Поход: %s") % Tr.t(str(Retention.RARITIES[rarity]["name"])) if rarity > 0 else ""
+	Juice.reward_reveal(host, Tr.t("Экспедиция вернулась"), items, subtitle)
+	_on_dynamite_changed.call()
 
 
 ## Реклама за награду: ролик (пока заглушка) и выдача награды по месту.
@@ -357,7 +331,9 @@ func on_rush_claim(step: int) -> void:
 		return
 	_sfx.play("claim", -4.0)
 	_settings.vibrate(30)
-	_toast.call(Tr.t("Сундук наряда") + ": " + _quarry_loot_text(result))
+	if int(result.get("dynamite", 0)) > 0:
+		_on_dynamite_changed.call()
+	Juice.reward_reveal(host, Tr.t("Сундук наряда"), Juice.items_from(result))
 	state.save()
 	_refresh.call()
 	_rebuild_journal.call()
@@ -420,21 +396,17 @@ func on_lucky_take(index: int) -> void:
 	_sfx.play("coin", -4.0)
 	_settings.vibrate(30)
 	var name := Tr.t(str(Lucky.KINDS[str(result["kind"])]["name"]))
-	var parts: Array[String] = []
-	if result.has("coins"):
-		parts.append(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])))
-	if result.has("diamonds"):
-		parts.append(Tr.t("Алмазы: +%d") % int(result["diamonds"]))
-	if result.has("picks"):
-		parts.append(Tr.t("Кирки +%d") % int(result["picks"]))
-	if result.has("tickets"):
-		parts.append(Tr.t("Жетоны узкоколейки +%d") % int(result["tickets"]))
+	var items := Juice.items_from(result)
 	if int(result.get("dynamite", 0)) > 0:
-		parts.append(Tr.t("Динамит +%d") % int(result["dynamite"]))
 		_on_dynamite_changed.call()
-	if result.has("points"):
-		parts.append(Tr.t("Очко навыков +1"))
-	_toast.call(name + (": " + ", ".join(parts) if not parts.is_empty() else ""))
+	match str(result["kind"]):
+		"frenzy":
+			items = [{"icon": "px_potion", "count": "×2", "rarity": int(result["rarity"]), "name": name}]
+		"gamble":
+			items.append({"icon": "px_crown", "count": "×0.5", "rarity": int(result["rarity"]), "name": Tr.t("Проклятие")})
+	if items.is_empty():
+		items = [{"icon": LuckyView.ICONS.get(str(result["kind"]), "chest"), "count": "", "rarity": int(result["rarity"]), "name": name}]
+	Juice.reward_reveal(host, name, items)
 	state.save()
 	_refresh.call()
 	_rebuild_journal.call()
@@ -458,7 +430,7 @@ func on_pass_claim_all() -> void:
 	if total.is_empty():
 		return
 	_after_pass_claim()
-	_toast.call(Tr.t("Награды пропуска") + ": " + PassView.reward_text(total).replace("+", "+"))
+	Juice.reward_reveal(host, Tr.t("Награды пропуска"), Juice.items_from(total))
 
 
 func _after_pass_claim() -> void:
@@ -526,27 +498,20 @@ func on_tower_fight() -> void:
 func _on_tower_done(won: bool) -> void:
 	var result := state.tower.finish(won, state)
 	state.save()
-	var modal := Modal.new()
 	if won:
 		_sfx.play("claim", -2.0)
 		_settings.vibrate(60)
-		modal.body.add_child(UiTheme.make_label(Tr.t("Этаж %d пройден!") % int(result["floor"]), 48, UiTheme.BRASS, true))
-		var parts: Array[String] = [Tr.fmt("+%d алмазов", [int(result["diamonds"])]), Tr.t("Приманки: %d") % int(result["baits"])]
-		if result.has("golden"):
-			parts.append(Tr.t("Золотой сундук ×%d") % int(result["golden"]))
-		if result.has("shards"):
-			parts.append(shards_text(result["shards"]))
-		if result.has("points"):
-			parts.append(Tr.t("Очко навыков +1"))
-		var text := UiTheme.make_text(", ".join(parts), 30, UiTheme.TEXT)
-		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		modal.body.add_child(text)
-	else:
-		_sfx.play("tick", -6.0)
-		modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 48, UiTheme.TEXT, true))
-		var hint := UiTheme.make_text(Tr.t("Сильнее бьют питомцы (все собранные), исследования мастерской и глубина. Попыток осталось: %d") % state.tower.attempts_left(), 26, UiTheme.MUTE)
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		modal.body.add_child(hint)
+		Juice.reward_reveal(host, Tr.t("Этаж %d пройден!") % int(result["floor"]), Juice.items_from(result))
+		_refresh.call()
+		_on_dynamite_changed.call()
+		_rebuild_journal.call()
+		return
+	var modal := Modal.new()
+	_sfx.play("tick", -6.0)
+	modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 48, UiTheme.TEXT, true))
+	var hint := UiTheme.make_text(Tr.t("Сильнее бьют питомцы (все собранные), исследования мастерской и глубина. Попыток осталось: %d") % state.tower.attempts_left(), 26, UiTheme.MUTE)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	modal.body.add_child(hint)
 	var close := UiTheme.make_button("Дальше", true, 32)
 	close.pressed.connect(modal.close)
 	modal.body.add_child(close)
@@ -558,14 +523,6 @@ func _on_tower_done(won: bool) -> void:
 
 
 # ---------- Артефакты и подземелья ----------
-
-## «Осколки: Кирка первого шахтёра ×2, …»
-static func shards_text(got: Dictionary) -> String:
-	var parts: Array[String] = []
-	for id in got:
-		parts.append("%s ×%d" % [Tr.t(str(Artifacts.data(str(id))["name"])), int(got[id])])
-	return Tr.t("Осколки") + ": " + ", ".join(parts)
-
 
 func on_artifact_upgrade(id: String) -> void:
 	if not state.artifacts.upgrade(id):
@@ -608,31 +565,20 @@ func _show_dungeon_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
 	state.save()
-	var modal := Modal.new()
 	if bool(result.get("won", false)):
 		_sfx.play("claim", -2.0)
 		_settings.vibrate(50)
-		modal.body.add_child(UiTheme.make_label(Tr.t("Уровень %d пройден!") % int(result["level"]), 46, UiTheme.BRASS, true))
-		var parts: Array[String] = []
-		if result.has("coins"):
-			parts.append(Tr.t("Монеты: +%s") % NumberFormat.short(float(result["coins"])))
-		if result.has("picks"):
-			parts.append(Tr.t("Кирки +%d") % int(result["picks"]))
-		if result.has("diamonds"):
-			parts.append(Tr.t("Алмазы: +%d") % int(result["diamonds"]))
-		if result.has("baits"):
-			parts.append(Tr.t("Приманки: %d") % int(result["baits"]))
-		if result.has("shards"):
-			parts.append(shards_text(result["shards"]))
-		var text := UiTheme.make_text("\n".join(parts), 28, UiTheme.TEXT)
-		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		modal.body.add_child(text)
-	else:
-		_sfx.play("tick", -6.0)
-		modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 46, UiTheme.TEXT, true))
-		var hint := UiTheme.make_text(Tr.t("Ключ не потрачен. Сильнее бьют питомцы, артефакт «Сердце горы», исследования и глубина."), 26, UiTheme.MUTE)
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		modal.body.add_child(hint)
+		Juice.reward_reveal(host, Tr.t("Уровень %d пройден!") % int(result["level"]), Juice.items_from(result))
+		_refresh.call()
+		_on_dynamite_changed.call()
+		_rebuild_journal.call()
+		return
+	var modal := Modal.new()
+	_sfx.play("tick", -6.0)
+	modal.body.add_child(UiTheme.make_label(Tr.t("Глыба устояла"), 46, UiTheme.TEXT, true))
+	var hint := UiTheme.make_text(Tr.t("Ключ не потрачен. Сильнее бьют питомцы, артефакт «Сердце горы», исследования и глубина."), 26, UiTheme.MUTE)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	modal.body.add_child(hint)
 	var close := UiTheme.make_button("Дальше", true, 32)
 	close.pressed.connect(modal.close)
 	modal.body.add_child(close)

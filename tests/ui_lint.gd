@@ -93,6 +93,10 @@ func _screens(language: String) -> void:
 		if child is TowerFight:
 			child.queue_free()
 	await _wait(0.2)
+	Juice.reward_reveal(_main._ui, Tr.t("Сундук наряда"), Juice.items_from({"coins": 123456.0, "diamonds": 12, "picks": 10, "golden": 1, "shards": {"heart": 2}}))
+	await _wait(1.6)
+	await _check(language, "окно наград")
+	await _close_modals()
 	_main._rewards.on_dungeon_fight("crypt")
 	await _wait(0.4)
 	await _check(language, "бой в подземелье")

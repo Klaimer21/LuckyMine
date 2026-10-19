@@ -90,9 +90,12 @@ func open() -> void:
 func rebuild() -> void:
 	for child in _content.get_children():
 		child.queue_free()
+	var cascade := _fade_next
 	if _fade_next:
 		_fade_next = false
 		UiTheme.fade_in(_content, 0.14)
+	if cascade:
+		_cascade_after_build.call_deferred()
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 16)
 	_content.add_child(header)
@@ -129,6 +132,8 @@ func rebuild() -> void:
 				_fade_next = true
 				rebuild())
 		tabs.add_child(tab_button)
+		if id != _tab and _tab_has_news(id):
+			Juice.add_dot(tab_button)
 	_pick_timer = null
 	_updaters = []
 	if _tab == 6:
@@ -260,6 +265,29 @@ func _process(delta: float) -> void:
 		(update as Callable).call()
 
 
+## Красная точка на вкладке: там есть что забрать или потратить.
+func _tab_has_news(id: int) -> bool:
+	match id:
+		1:
+			return state.skill_points > 0
+		2:
+			return state.expedition_ready() or state.workshop.ready(ClickerState.now())
+		3:
+			return state.claimable_achievements() > 0 or state.quarry.rush_any_claimable() or state.miner_pass.claimable_count() > 0
+		4:
+			return state.planet_ready()
+		6:
+			return state.quarry.picks >= state.quarry.pick_cap
+		7:
+			return state.pets.free_available() or state.artifacts.any_upgradable()
+	return false
+
+
+## Карточки новой вкладки выезжают по очереди (после раскладки, когда известны размеры).
+func _cascade_after_build() -> void:
+	Juice.cascade(_content)
+
+
 ## Что во вкладке «Походы» готово к получению: смена этой строки перестраивает вкладку (кнопки «Забрать»).
 func _trip_state() -> String:
 	var parts: Array[String] = []
@@ -363,6 +391,7 @@ func _build_achievements() -> void:
 		var card := _card()
 		if done and not claimed:
 			card.add_theme_stylebox_override("panel", UiTheme.panel_style(UiTheme.FELT, UiTheme.BRASS, 2, 18, 14))     # можно забрать: рамка латунью
+			Juice.add_brackets(card)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 16)
 		card.add_child(row)
