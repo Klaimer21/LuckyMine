@@ -10,9 +10,7 @@ const SHOWN := 7                            # этажей в столбе
 ## Карточка башни в журнале.
 static func build(parent: VBoxContainer, state: ClickerState, journal: JournalScreen) -> void:
 	var tower := state.tower
-	var note := UiTheme.make_text("Глыбу этажа нужно разбить касаниями за 20 секунд. Каждый 5-й этаж — хранитель. Сила удара растёт от питомцев (всех собранных), исследований и глубины.", 22, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "tower", "Глыбу этажа нужно разбить касаниями за 20 секунд. Каждый 5-й этаж — хранитель. Сила удара растёт от питомцев (всех собранных), исследований и глубины.", 22)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	parent.add_child(row)

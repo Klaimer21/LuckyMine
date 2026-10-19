@@ -22,7 +22,7 @@ vertical_alignment anchor_left anchor_right anchor_top anchor_bottom offset_left
 grow_horizontal global_position bus volume_db pitch_scale stream playing amount lifetime one_shot emitting amount_ratio
 process_material draw_pass_1 mesh material_override cast_shadow light_energy rotation_degrees fov size_flags_stretch_ratio
 expand_mode stretch_mode name modulate z_index font_size environment shadow_enabled directional_shadow_mode
-clip_contents separation theme alignment fill_mode show_percentage step flat self_modulate bg_color border_color""".split())
+clip_contents separation theme alignment fill_mode show_percentage step flat self_modulate bg_color border_color visibility_changed""".split())
 
 
 def declared_in(text):

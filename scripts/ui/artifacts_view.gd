@@ -9,9 +9,7 @@ static func effect_text(id: String, level: int) -> String:
 
 static func build(parent: VBoxContainer, state: ClickerState, journal: JournalScreen) -> void:
 	var artifacts := state.artifacts
-	var note := UiTheme.make_text("Осколки артефактов дают «Склеп древних» в подземельях дня и хранители башни. Бонус открытого артефакта действует всегда и не сбрасывается.", 22, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "artifacts", "Осколки артефактов дают «Склеп древних» в подземельях дня и хранители башни. Бонус открытого артефакта действует всегда и не сбрасывается.", 22)
 	for entry in Artifacts.LIST:
 		var id := str(entry["id"])
 		var rarity := int(entry["rarity"])

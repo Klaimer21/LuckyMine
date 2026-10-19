@@ -11,9 +11,7 @@ const TRIP_ICONS := ["trip_scout", "trip_descent", "trip_deep"]
 ## Строит вкладку; в updaters добавляет функции, которые раз в полсекунды обновляют таймеры.
 static func build(parent: VBoxContainer, state: ClickerState, journal: JournalScreen, updaters: Array) -> void:
 	state.ensure_offers()
-	var note := UiTheme.make_text("Шахтёры уходят в поход и возвращаются с добычей. Чем реже поход, тем богаче добыча; новые слоты открываются в глубоких зонах.", 24, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "trips", "Шахтёры уходят в поход и возвращаются с добычей. Чем реже поход, тем богаче добыча; новые слоты открываются в глубоких зонах.", 24)
 
 	_section(parent, Tr.t("В пути") + "  %d / %d" % [state.expeditions.size(), state.expedition_slots()])
 	if state.expeditions.is_empty():
@@ -211,9 +209,7 @@ static func _build_workshop(parent: VBoxContainer, state: ClickerState, journal:
 	var workshop := state.workshop
 	var now := ClickerState.now()
 	_section(parent, Tr.t("Мастерская"))
-	var note := UiTheme.make_text("Исследования стоят монеты и время, а уровни остаются навсегда, даже после «Новой шахты» и новой планеты. Одно исследование за раз.", 24, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "workshop", "Исследования стоят монеты и время, а уровни остаются навсегда, даже после «Новой шахты» и новой планеты. Одно исследование за раз.", 24)
 	if workshop.busy():
 		var entry := Workshop.entry_of(workshop.active)
 		var card := PanelContainer.new()

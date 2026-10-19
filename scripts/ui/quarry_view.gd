@@ -26,9 +26,7 @@ const ORE_NAMES := {1: "медь", 2: "железо", 3: "золото"}
 static func build_dig(parent: VBoxContainer, state: ClickerState, journal: JournalScreen) -> Label:
 	var quarry := state.quarry
 	quarry.tick_picks(ClickerState.now())
-	var note := UiTheme.make_text("Бейте глыбы кирками сверху вниз. Под ними добыча, а где-то лаз на ярус ниже: из открытой клетки рядом с ним тянет сквозняком.", 24, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "dig", "Бейте глыбы кирками сверху вниз. Под ними добыча, а где-то лаз на ярус ниже: из открытой клетки рядом с ним тянет сквозняком.", 24)
 
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", UiTheme.SPACE_M)
@@ -131,9 +129,7 @@ static func _cell(i: int, quarry: Quarry, journal: JournalScreen) -> Control:
 static func build_junk(parent: VBoxContainer, state: ClickerState, journal: JournalScreen) -> void:
 	var quarry := state.quarry
 	quarry.junk_refresh_if_new_day()
-	var note := UiTheme.make_text("Каждый день новый товар со скидкой. Каждую позицию можно купить один раз.", 24, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "junk", "Каждый день новый товар со скидкой. Каждую позицию можно купить один раз.", 24)
 	for slot in quarry.junk_slots.size():
 		var entry: Dictionary = quarry.junk_slots[slot]
 		var card := PanelContainer.new()

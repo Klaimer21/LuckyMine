@@ -59,10 +59,17 @@ var _trip_signature := ""           # что готово во вкладке «
 var _fade_next := false             # следующая перерисовка — смена вкладки: короткое проявление
 var _tick := 0.0
 var _ad_tick := 0.0
+var _notes_open := {}                    # id пояснения -> развернуто ли (нажатием); по умолчанию развернуто только в первый раз
+var _notes_shown := {}
 
 
 func setup(p_state: ClickerState) -> void:
 	state = p_state
+	visibility_changed.connect(func() -> void:
+			if not visible:
+				for key in _notes_shown:
+					state.hints_seen[key] = true           # пояснение увидено: в следующий раз оно свёрнуто в одну строку
+				_notes_shown.clear())
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(UiTheme.make_background())
 	var margin := MarginContainer.new()
@@ -120,7 +127,7 @@ func rebuild() -> void:
 			_content.add_child(tabs)
 		var entry: Array = tab_list[index]
 		var id: int = entry[0]
-		var tab_button := UiTheme.make_key(str(entry[1]), 21, "felt" if id == _tab else "dark")
+		var tab_button := UiTheme.make_key(str(entry[1]), 21, "brass" if id == _tab else "dark")
 		if id != _tab:
 			# неактивные вкладки светлее общего «приглушённого» цвета: иначе подписи плохо читаются на телефоне
 			for color_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
@@ -200,7 +207,7 @@ func _build_shop() -> void:
 
 ## Вкладка «Руда»: коллекция четырёх руд с вехами и бонус за полный набор.
 func _build_ore() -> void:
-	_content.add_child(UiTheme.make_text("Каждая находка копится в коллекции: за вехи руда даёт постоянный бонус к доходу.", 28, UiTheme.MUTE))
+	intro(_content, "ore", "Каждая находка копится в коллекции: за вехи руда даёт постоянный бонус к доходу.", 28)
 	for ore in ClickerState.ORES:
 		_ore_card(ore)
 	var full := state.full_set_level()
@@ -213,9 +220,7 @@ func _build_ore() -> void:
 ## Диковинки из экспедиций: четыре клетки, ненайденные тёмные.
 func _build_relics() -> void:
 	_section("Диковинки")
-	var note := UiTheme.make_text("Их приносят шахтёры из экспедиций: иногда, вместе с добычей. Каждая разновидность даёт +2% к доходу, полный набор ещё +4%.", 26, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_content.add_child(note)
+	intro(_content, "curiosities", "Их приносят шахтёры из экспедиций: иногда, вместе с добычей. Каждая разновидность даёт +2% к доходу, полный набор ещё +4%.", 26)
 	_content.add_child(UiTheme.make_label(Tr.t("Бонус диковинок: ×%.2f") % state.relic_multiplier(), 28, UiTheme.BRASS))
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -243,6 +248,35 @@ func _build_relics() -> void:
 		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		texts.add_child(title)
 		texts.add_child(UiTheme.make_label("×%d" % count if count > 0 else Tr.t("не найдена"), 28, UiTheme.BRASS if count > 0 else UiTheme.MUTE))
+
+
+## Пояснение «как это устроено» над вкладкой. Впервые — целиком; потом свёрнуто в одну строку с «…», касание разворачивает.
+## Так содержимое вкладки не уезжает вниз под одним и тем же текстом при каждом открытии.
+func intro(parent: Control, id: String, text: String, size := 24) -> void:
+	var key := "note_" + id
+	var open := bool(_notes_open.get(key, not state.hints_seen.has(key)))
+	_notes_shown[key] = true
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	row.mouse_filter = Control.MOUSE_FILTER_STOP
+	parent.add_child(row)
+	var note := UiTheme.make_text(text, size, UiTheme.MUTE)
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if open:
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	else:
+		note.autowrap_mode = TextServer.AUTOWRAP_OFF
+		note.clip_text = true
+		note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(note)
+	var sign := UiTheme.make_label("−" if open else "+", 30, UiTheme.BRASS, true)
+	sign.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(sign)
+	row.custom_minimum_size.y = 56
+	row.gui_input.connect(func(event: InputEvent) -> void:
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				_notes_open[key] = not open
+				rebuild())
 
 
 ## Кнопка рекламы с паузой: пока журнал открыт, отсчёт на ней идёт, а по готовности она включается сама (на любой вкладке).
@@ -321,21 +355,34 @@ func _trip_state() -> String:
 	return "".join(parts)
 
 
+## Переключатель внутри вкладки: ниже и спокойнее главных вкладок (выбранная — зелёная, остальные — контур),
+## чтобы главная навигация оставалась самой заметной.
+func _sub_tabs(row: HBoxContainer, names: Array, current: int, pick: Callable) -> void:
+	row.add_theme_constant_override("separation", 6)
+	for mode in names.size():
+		var key: Button
+		if mode == current:
+			key = UiTheme.make_key(str(names[mode]), 22, "felt")
+		else:
+			key = UiTheme.make_button(str(names[mode]), false, 22)
+			key.add_theme_color_override("font_color", UiTheme.TEXT.darkened(0.2))
+		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		key.clip_text = true
+		key.custom_minimum_size.y = 72
+		key.pressed.connect(func() -> void:
+				pick.call(mode)
+				_fade_next = true
+				rebuild())
+		row.add_child(key)
+
+
 ## Вкладка «Друзья»: переключатель «Питомцы» / «Артефакты».
 func _build_friends_tab() -> void:
 	var modes := HBoxContainer.new()
 	modes.add_theme_constant_override("separation", 8)
 	_content.add_child(modes)
 	var names := [Tr.t("Питомцы"), Tr.t("Артефакты") + ("  !" if state.artifacts.any_upgradable() else "")]
-	for mode in names.size():
-		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _friends_mode else "dark")
-		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		key.custom_minimum_size.y = 84
-		key.pressed.connect(func() -> void:
-				_friends_mode = mode
-				_fade_next = true
-				rebuild())
-		modes.add_child(key)
+	_sub_tabs(modes, names, _friends_mode, func(mode: int) -> void: _friends_mode = mode)
 	if _friends_mode == 1:
 		ArtifactsView.build(_content, state, self)
 	else:
@@ -348,15 +395,7 @@ func _build_dig_tab() -> void:
 	modes.add_theme_constant_override("separation", 8)
 	_content.add_child(modes)
 	var names := [Tr.t("Забой"), Tr.t("Узкоколейка") + "  %d" % state.railway.tickets, Tr.t("Башня"), Tr.t("Подземелья")]
-	for mode in names.size():
-		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _dig_mode else "dark")
-		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		key.custom_minimum_size.y = 84
-		key.pressed.connect(func() -> void:
-				_dig_mode = mode
-				_fade_next = true
-				rebuild())
-		modes.add_child(key)
+	_sub_tabs(modes, names, _dig_mode, func(mode: int) -> void: _dig_mode = mode)
 	if _dig_mode == 0:
 		_pick_timer = QuarryView.build_dig(_content, state, self)
 		return
@@ -366,9 +405,7 @@ func _build_dig_tab() -> void:
 	if _dig_mode == 3:
 		DungeonsView.build(_content, state, self)
 		return
-	var note := UiTheme.make_text("Жетон — один бросок кубика: вагонетка едет по рельсам и забирает добычу клетки. Через депо — круг и награда. Жетоны дают ярусы забоя, походы, хранители, наряд дня и ежедневная награда.", 22, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_content.add_child(note)
+	intro(_content, "railway", "Жетон — один бросок кубика: вагонетка едет по рельсам и забирает добычу клетки. Через депо — круг и награда. Жетоны дают ярусы забоя, походы, хранители, наряд дня и ежедневная награда.", 22)
 	_content.add_child(RailwayView.new().setup(state, self, 1024.0))
 
 
@@ -388,15 +425,7 @@ func _build_achievements() -> void:
 	_content.add_child(modes)
 	var pass_waiting := state.miner_pass.claimable_count()
 	var names := [Tr.t("Задания"), Tr.t("Пропуск шахтёра") + ("  %d" % pass_waiting if pass_waiting > 0 else "")]
-	for mode in names.size():
-		var key := UiTheme.make_key(str(names[mode]), 26, "brass" if mode == _rewards_mode else "dark")
-		key.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		key.custom_minimum_size.y = 84
-		key.pressed.connect(func() -> void:
-				_rewards_mode = mode
-				_fade_next = true
-				rebuild())
-		modes.add_child(key)
+	_sub_tabs(modes, names, _rewards_mode, func(mode: int) -> void: _rewards_mode = mode)
 	if _rewards_mode == 1:
 		PassView.build(_content, state, self)
 		return

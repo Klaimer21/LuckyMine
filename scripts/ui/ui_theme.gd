@@ -20,6 +20,7 @@ const INK := Color(0.953, 0.925, 0.855)
 const ENEMY := Color(0.169, 0.165, 0.161)
 const ENEMY_INK := Color(0.753, 0.333, 0.247)
 const DARK_ON_BRASS := Color(0.10, 0.08, 0.03)
+const DISABLED_INK := Color(0.624, 0.690, 0.631, 0.5)       # текст отключённой кнопки: приглушённый и полупрозрачный
 
 ## Шрифты (один набор на все языки, кроме китайского: Russo One и Fira Sans Condensed содержат латиницу и кириллицу).
 ## Galmuri11 (OFL, quiple): пиксельный шрифт с полной нормальной кириллицей, обрезан до латиницы, кириллицы и знаков.
@@ -203,14 +204,16 @@ static func make_button(text: String, brass: bool, size := 32) -> Button:
 	button.add_theme_color_override("font_color", DARK_ON_BRASS if brass else TEXT)
 	button.add_theme_color_override("font_hover_color", DARK_ON_BRASS if brass else TEXT)
 	button.add_theme_color_override("font_pressed_color", DARK_ON_BRASS if brass else TEXT)
-	button.add_theme_color_override("font_disabled_color", MUTE)
+	button.add_theme_color_override("font_disabled_color", DISABLED_INK)
 	var f := font(body_file())
 	if f != null:
 		button.add_theme_font_override("font", f)
 	button.add_theme_stylebox_override("normal", _box(BRASS if brass else Color(0, 0, 0, 0), brass))
 	button.add_theme_stylebox_override("hover", _box(BRASS.lightened(0.08) if brass else SURFACE, brass))
 	button.add_theme_stylebox_override("pressed", _box(BRASS.darkened(0.12) if brass else LINE, brass))
-	button.add_theme_stylebox_override("disabled", _box(SURFACE, false))
+	var off := _box(Color(0, 0, 0, 0), false)
+	off.border_color = LINE
+	button.add_theme_stylebox_override("disabled", off)
 	button.custom_minimum_size.y = 84
 	# лёгкое «вдавливание» при нажатии, как у клавиш
 	button.resized.connect(func() -> void: button.pivot_offset = button.size * 0.5)
@@ -264,20 +267,20 @@ static func style_key(button: Button, kind: String) -> void:
 			ink = TEXT
 		"dark":
 			fill = SURFACE
-			edge = LINE
-			ink = MUTE
+			edge = LINE_STRONG
+			ink = TEXT                                    # второстепенная, но нажимается: текст светлый (отключённая — тусклая и плоская)
 		"ember":
 			fill = Color(0.60, 0.28, 0.17)
 			edge = Color(0.33, 0.14, 0.09)
 			ink = TEXT
 	for color_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		button.add_theme_color_override(color_name, ink)
-	button.add_theme_color_override("font_disabled_color", MUTE)
+	button.add_theme_color_override("font_disabled_color", DISABLED_INK)
 	button.add_theme_stylebox_override("normal", _key_box(fill, edge, false))
 	button.add_theme_stylebox_override("hover", _key_box(fill.lightened(0.06), edge, false))
 	button.add_theme_stylebox_override("focus", _key_box(fill, edge, false))
 	button.add_theme_stylebox_override("pressed", _key_box(fill.darkened(0.05), edge, true))
-	button.add_theme_stylebox_override("disabled", _key_box(BG, LINE, false))
+	button.add_theme_stylebox_override("disabled", _key_box(Color(BG, 0.55), LINE, false, true))
 
 
 ## Пиксельный вид рамки: скошенные углы (по одному «ступенчатому» шагу) и без сглаживания, как у спрайтов.
@@ -288,12 +291,13 @@ static func pixelize(style: StyleBoxFlat, radius := 8) -> StyleBoxFlat:
 	return style
 
 
-static func _key_box(fill: Color, edge: Color, pressed: bool) -> StyleBoxFlat:
+## flat — отключённая клавиша: без приподнятой кромки, «утоплена» в панель, чтобы её не путали с нажимаемой.
+static func _key_box(fill: Color, edge: Color, pressed: bool, flat := false) -> StyleBoxFlat:
 	var style := pixelize(StyleBoxFlat.new(), 8)
 	style.bg_color = fill
 	style.border_color = edge
 	style.set_border_width_all(4)
-	style.border_width_bottom = 6 if pressed else 12
+	style.border_width_bottom = 4 if flat else (6 if pressed else 12)
 	style.content_margin_left = 16
 	style.content_margin_right = 16
 	style.content_margin_top = 13 if pressed else 8

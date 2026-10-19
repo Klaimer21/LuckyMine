@@ -54,6 +54,15 @@ func configure(p_state: ClickerState, title_text: String, title_color: Color, hp
 	column.offset_bottom = -120
 	column.add_theme_constant_override("separation", UiTheme.SPACE_M)
 	add_child(column)
+	var give_up := UiTheme.make_key(Tr.t("Сдаться"), 24, "dark")
+	give_up.custom_minimum_size = Vector2(200, 84)
+	give_up.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	give_up.offset_left = -240
+	give_up.offset_right = -40
+	give_up.offset_top = 48
+	give_up.offset_bottom = 132
+	give_up.pressed.connect(func() -> void: _give_up(give_up))
+	add_child(give_up)
 	var title := UiTheme.make_label(title_text, 52, title_color, true)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -117,6 +126,23 @@ func _input(event: InputEvent) -> void:
 		return
 	if _rock.get_global_rect().has_point(event.position):
 		_hit()
+
+
+## Выход из боя: первое нажатие спрашивает «Точно?», второе (в течение 2 секунд) засчитывает поражение.
+func _give_up(button: Button) -> void:
+	if _over:
+		return
+	if button.has_meta("armed"):
+		_end(false)
+		return
+	button.set_meta("armed", true)
+	button.text = Tr.t("Точно?")
+	UiTheme.style_key(button, "ember")
+	get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			if is_instance_valid(button) and not _over:
+				button.remove_meta("armed")
+				button.text = Tr.t("Сдаться")
+				UiTheme.style_key(button, "dark"))
 
 
 func _refresh() -> void:

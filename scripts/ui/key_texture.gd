@@ -18,6 +18,12 @@ func _init() -> void:
 	resized.connect(queue_redraw)
 
 
+func _ready() -> void:
+	var parent := get_parent() as CanvasItem
+	if parent != null:
+		parent.draw.connect(queue_redraw)          # кнопка перерисовалась (например, стала отключённой) — фактура тоже
+
+
 static func tile_texture() -> ImageTexture:
 	if _tile != null:
 		return _tile
@@ -39,6 +45,9 @@ static func tile_texture() -> ImageTexture:
 
 
 func _draw() -> void:
+	var button := get_parent() as BaseButton
+	if button != null and button.disabled:
+		return                                   # у отключённой клавиши ни крапинки, ни заклёпок: она плоская
 	var inner := Rect2(border, border, size.x - border * 2.0, size.y - border - bottom)
 	if inner.size.x < 16.0 or inner.size.y < 16.0:
 		return

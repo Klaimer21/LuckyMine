@@ -100,7 +100,7 @@ static func reward_reveal(host: Control, title: String, items: Array, subtitle :
 	var columns := mini(4, maxi(1, items.size()))
 	var rows := ceili(items.size() / float(columns))
 	var side := 150.0 if items.size() <= 4 else 130.0
-	stage.custom_minimum_size = Vector2(0, rows * (side + 64.0) + 40.0)
+	stage.custom_minimum_size = Vector2(0, rows * (side + 100.0) + 40.0)
 	modal.body.add_child(stage)
 	var rays := JuiceRays.new()
 	rays.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -116,25 +116,33 @@ static func reward_reveal(host: Control, title: String, items: Array, subtitle :
 	for i in items.size():
 		var entry: Dictionary = items[i]
 		var cell := VBoxContainer.new()
-		cell.add_theme_constant_override("separation", 4)
-		var slot := item_slot(str(entry.get("icon", "chest")), int(entry.get("rarity", 0)), side, str(entry.get("count", "")))
+		cell.add_theme_constant_override("separation", 2)
+		# количество — крупно под ячейкой (в углу ячейки длинное «123.46K» было бы нечитаемым), ниже название
+		var slot := item_slot(str(entry.get("icon", "chest")), int(entry.get("rarity", 0)), side)
 		slot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		cell.add_child(slot)
-		var name_label := UiTheme.make_label(str(entry.get("name", "")), 20, UiTheme.TEXT)
+		var count_label := UiTheme.make_label(str(entry.get("count", "")), 28, UiTheme.BRASS, true)
+		count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		count_label.visible = count_label.text != ""
+		cell.add_child(count_label)
+		var name_label := UiTheme.make_label(str(entry.get("name", "")), 20, UiTheme.MUTE)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_label.custom_minimum_size.x = side + 10.0
-		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_label.custom_minimum_size.x = side + 34.0
+		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD          # перенос только между словами: «Алмаз / ы» не бывает
+		_fit_words(name_label, side + 34.0)
 		cell.add_child(name_label)
 		grid.add_child(cell)
 		# выскакивает по очереди: из точки, с перелётом и отскоком
 		slot.pivot_offset = Vector2(side, side) * 0.5
 		slot.scale = Vector2.ZERO
 		name_label.modulate.a = 0.0
+		count_label.modulate.a = 0.0
 		var tween := slot.create_tween()
 		tween.tween_interval(0.25 + 0.12 * i)
 		tween.tween_property(slot, "scale", Vector2(1.18, 1.18), 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		tween.tween_property(slot, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tween.parallel().tween_property(name_label, "modulate:a", 1.0, 0.18)
+		tween.parallel().tween_property(count_label, "modulate:a", 1.0, 0.18)
 		if int(entry.get("rarity", 0)) >= 2:
 			tween.tween_callback(func() -> void: add_brackets(slot, RARITY[int(entry["rarity"])]))
 	var close := UiTheme.make_button("Отлично", true, 32)
@@ -144,6 +152,17 @@ static func reward_reveal(host: Control, title: String, items: Array, subtitle :
 	close.create_tween().tween_property(close, "modulate:a", 1.0, 0.2).set_delay(0.3 + 0.12 * items.size())
 	host.add_child(modal)
 	return modal
+
+
+## Уменьшает шрифт подписи, пока самое длинное слово не влезет в ширину (слова не рвутся посередине).
+static func _fit_words(label: Label, width: float) -> void:
+	var font := label.get_theme_font("font")
+	var font_size := label.get_theme_font_size("font_size")
+	var widest := 0.0
+	for word in label.text.split(" ", false):
+		widest = maxf(widest, font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	if widest > width:
+		label.add_theme_font_size_override("font_size", maxi(UiTheme.MIN_LABEL_SIZE, floori(font_size * width / widest)))
 
 
 ## Элемент награды для reward_reveal из обычного словаря выдачи (coins, diamonds, picks, …).

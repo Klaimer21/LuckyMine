@@ -28,9 +28,7 @@ static func build(parent: VBoxContainer, state: ClickerState, journal: JournalSc
 	banner.add_child(column)
 	column.add_child(UiTheme.make_label(Tr.t("Правило дня") + ": " + Tr.t(str(rule["name"])), 30, UiTheme.BRASS, true))
 	column.add_child(UiTheme.make_text(Tr.t(str(rule["text"])), 24, UiTheme.TEXT))
-	var note := UiTheme.make_text("Два ключа в день на каждое подземелье. Победа открывает следующий уровень, поражение ключ не тратит. Пройденный уровень можно зачистить без боя.", 22, UiTheme.MUTE)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	parent.add_child(note)
+	journal.intro(parent, "dungeons", "Два ключа в день на каждое подземелье. Победа открывает следующий уровень, поражение ключ не тратит. Пройденный уровень можно зачистить без боя.", 22)
 	parent.add_child(UiTheme.make_text(Tr.t("Удар: %s") % NumberFormat.short(Tower.tap_damage(state)), 24, UiTheme.TEXT))
 	for entry in Dungeons.LIST:
 		var id := str(entry["id"])
